@@ -3,7 +3,9 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	"erp-backend/internal/api/middleware"
 	"erp-backend/internal/domain/models"
 	"erp-backend/internal/infrastructure/database"
@@ -47,4 +49,40 @@ func (h *FornecedorHandler) Criar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	utils.JSON(w, http.StatusCreated, fornecedor)
+}
+
+func (h *FornecedorHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		utils.Error(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	var req models.CriarFornecedorRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.Error(w, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if err := h.fornecedorService.Atualizar(r.Context(), claims.EmpresaID, id, req); err != nil {
+		utils.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSONMessage(w, http.StatusOK, "Fornecedor atualizado com sucesso")
+}
+
+func (h *FornecedorHandler) Inativar(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		utils.Error(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	if err := h.fornecedorService.Inativar(r.Context(), claims.EmpresaID, id); err != nil {
+		utils.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSONMessage(w, http.StatusOK, "Fornecedor inativado com sucesso")
 }

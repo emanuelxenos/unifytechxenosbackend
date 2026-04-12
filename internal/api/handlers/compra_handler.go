@@ -58,3 +58,13 @@ func (h *CompraHandler) Receber(w http.ResponseWriter, r *http.Request) {
 	}
 	utils.JSONMessage(w, http.StatusOK, "Compra recebida com sucesso")
 }
+
+func (h *CompraHandler) Listar(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	compras, err := h.compraService.Listar(r.Context(), claims.EmpresaID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, compras)
+}

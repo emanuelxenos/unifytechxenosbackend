@@ -52,3 +52,25 @@ func (s *FornecedorService) Criar(ctx context.Context, empresaID int, req models
 	f.RazaoSocial = req.RazaoSocial
 	return &f, nil
 }
+
+func (s *FornecedorService) Atualizar(ctx context.Context, empresaID, id int, req models.CriarFornecedorRequest) error {
+	_, err := s.db.Pool.Exec(ctx,
+		`UPDATE fornecedor 
+		 SET razao_social = $1, cnpj = $2, telefone = $3, email = $4
+		 WHERE id_fornecedor = $5 AND empresa_id = $6`,
+		req.RazaoSocial, req.CNPJ, req.Telefone, req.Email, id, empresaID)
+	if err != nil {
+		return fmt.Errorf("erro ao atualizar fornecedor: %w", err)
+	}
+	return nil
+}
+
+func (s *FornecedorService) Inativar(ctx context.Context, empresaID, id int) error {
+	_, err := s.db.Pool.Exec(ctx,
+		`UPDATE fornecedor SET ativo = false WHERE id_fornecedor = $1 AND empresa_id = $2`,
+		id, empresaID)
+	if err != nil {
+		return fmt.Errorf("erro ao inativar fornecedor: %w", err)
+	}
+	return nil
+}
