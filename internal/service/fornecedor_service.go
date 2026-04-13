@@ -20,7 +20,7 @@ func (s *FornecedorService) Listar(ctx context.Context, empresaID int, incluirIn
 	rows, err := s.db.Pool.Query(ctx,
 		`SELECT id_fornecedor, empresa_id, razao_social, nome_fantasia, cnpj,
 		        telefone, email, data_cadastro, ativo
-		 FROM fornecedor WHERE empresa_id = $1 AND (ativo = true OR $2 = true)
+		 FROM fornecedor WHERE empresa_id = $1 AND (($2 = false AND ativo = true) OR ($2 = true AND ativo = false))
 		 ORDER BY razao_social`, empresaID, incluirInativos)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar fornecedores: %w", err)
