@@ -23,7 +23,9 @@ func NewFornecedorHandler(db *database.PostgresDB) *FornecedorHandler {
 
 func (h *FornecedorHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
-	fornecedores, err := h.fornecedorService.Listar(r.Context(), claims.EmpresaID)
+	incluirInativos, _ := strconv.ParseBool(r.URL.Query().Get("incluir_inativos"))
+
+	fornecedores, err := h.fornecedorService.Listar(r.Context(), claims.EmpresaID, incluirInativos)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return

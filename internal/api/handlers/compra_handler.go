@@ -61,7 +61,9 @@ func (h *CompraHandler) Receber(w http.ResponseWriter, r *http.Request) {
 
 func (h *CompraHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
-	compras, err := h.compraService.Listar(r.Context(), claims.EmpresaID)
+	fornecedorID, _ := strconv.Atoi(r.URL.Query().Get("fornecedor_id"))
+
+	compras, err := h.compraService.Listar(r.Context(), claims.EmpresaID, fornecedorID)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return

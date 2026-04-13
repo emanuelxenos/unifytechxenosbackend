@@ -16,12 +16,12 @@ func NewFornecedorService(db *database.PostgresDB) *FornecedorService {
 	return &FornecedorService{db: db}
 }
 
-func (s *FornecedorService) Listar(ctx context.Context, empresaID int) ([]models.Fornecedor, error) {
+func (s *FornecedorService) Listar(ctx context.Context, empresaID int, incluirInativos bool) ([]models.Fornecedor, error) {
 	rows, err := s.db.Pool.Query(ctx,
 		`SELECT id_fornecedor, empresa_id, razao_social, nome_fantasia, cnpj,
 		        telefone, email, data_cadastro, ativo
-		 FROM fornecedor WHERE empresa_id = $1 AND ativo = true
-		 ORDER BY razao_social`, empresaID)
+		 FROM fornecedor WHERE empresa_id = $1 AND (ativo = true OR $2 = true)
+		 ORDER BY razao_social`, empresaID, incluirInativos)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar fornecedores: %w", err)
 	}

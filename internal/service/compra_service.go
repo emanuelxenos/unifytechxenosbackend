@@ -108,15 +108,15 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 	return tx.Commit(ctx)
 }
 
-func (s *CompraService) Listar(ctx context.Context, empresaID int) ([]models.Compra, error) {
+func (s *CompraService) Listar(ctx context.Context, empresaID int, fornecedorID int) ([]models.Compra, error) {
 	rows, err := s.db.Pool.Query(ctx,
 		`SELECT c.id_compra, c.empresa_id, c.fornecedor_id, c.usuario_id, c.numero_nota_fiscal,
 		        c.data_emissao, c.data_entrada, c.data_cadastro, c.valor_produtos, c.valor_total, c.status,
 		        f.razao_social as fornecedor_nome
 		 FROM compra c
 		 LEFT JOIN fornecedor f ON c.fornecedor_id = f.id_fornecedor
-		 WHERE c.empresa_id = $1
-		 ORDER BY c.data_entrada DESC`, empresaID)
+		 WHERE c.empresa_id = $1 AND (c.fornecedor_id = $2 OR $2 = 0)
+		 ORDER BY c.data_entrada DESC`, empresaID, fornecedorID)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar compras: %w", err)
 	}
