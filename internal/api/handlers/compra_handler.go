@@ -62,11 +62,31 @@ func (h *CompraHandler) Receber(w http.ResponseWriter, r *http.Request) {
 func (h *CompraHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
 	fornecedorID, _ := strconv.Atoi(r.URL.Query().Get("fornecedor_id"))
+	status := r.URL.Query().Get("status")
+	notaFiscal := r.URL.Query().Get("nota_fiscal")
+	dataInicio := r.URL.Query().Get("data_inicio")
+	dataFim := r.URL.Query().Get("data_fim")
 
-	compras, err := h.compraService.Listar(r.Context(), claims.EmpresaID, fornecedorID)
+	compras, err := h.compraService.Listar(r.Context(), claims.EmpresaID, fornecedorID, status, notaFiscal, dataInicio, dataFim)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	utils.JSON(w, http.StatusOK, compras)
+}
+
+func (h *CompraHandler) BuscarPorID(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		utils.Error(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	compra, err := h.compraService.BuscarPorID(r.Context(), claims.EmpresaID, id)
+	if err != nil {
+		utils.Error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, compra)
 }

@@ -73,7 +73,23 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 	}
 	defer tx.Rollback(ctx)
 
-	for _, item := range req.ItensRecebidos {
+	itens := req.ItensRecebidos
+	if len(itens) == 0 {
+		// Se não informou itens, recebe tudo que foi comprado
+		rows, err := tx.Query(ctx, "SELECT produto_id, quantidade FROM item_compra WHERE compra_id = $1", compraID)
+		if err != nil {
+			return fmt.Errorf("erro ao buscar itens para recebimento automático: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var i models.ItemRecebidoRequest
+			if err := rows.Scan(&i.ProdutoID, &i.QuantidadeRecebida); err == nil {
+				itens = append(itens, i)
+			}
+		}
+	}
+
+	for _, item := range itens {
 		_, err = tx.Exec(ctx,
 			`UPDATE item_compra SET quantidade_recebida = $1, data_recebimento = CURRENT_TIMESTAMP
 			 WHERE compra_id = $2 AND produto_id = $3`,
@@ -108,15 +124,50 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 	return tx.Commit(ctx)
 }
 
-func (s *CompraService) Listar(ctx context.Context, empresaID int, fornecedorID int) ([]models.Compra, error) {
-	rows, err := s.db.Pool.Query(ctx,
-		`SELECT c.id_compra, c.empresa_id, c.fornecedor_id, c.usuario_id, c.numero_nota_fiscal,
+func (s *CompraService) Listar(ctx context.Context, empresaID int, fornecedorID int, status string, notaFiscal string, dataInicio, dataFim string) ([]models.Compra, error) {
+	query := `SELECT c.id_compra, c.empresa_id, c.fornecedor_id, c.usuario_id, c.numero_nota_fiscal,
 		        c.data_emissao, c.data_entrada, c.data_cadastro, c.valor_produtos, c.valor_total, c.status,
 		        f.razao_social as fornecedor_nome
 		 FROM compra c
 		 LEFT JOIN fornecedor f ON c.fornecedor_id = f.id_fornecedor
-		 WHERE c.empresa_id = $1 AND (c.fornecedor_id = $2 OR $2 = 0)
-		 ORDER BY c.data_entrada DESC`, empresaID, fornecedorID)
+		 WHERE c.empresa_id = $1`
+	
+	args := []interface{}{empresaID}
+	argCount := 1
+
+	if fornecedorID > 0 {
+		argCount++
+		query += fmt.Sprintf(" AND c.fornecedor_id = $%d", argCount)
+		args = append(args, fornecedorID)
+	}
+
+	if status != "" {
+		argCount++
+		query += fmt.Sprintf(" AND c.status = $%d", argCount)
+		args = append(args, status)
+	}
+
+	if notaFiscal != "" {
+		argCount++
+		query += fmt.Sprintf(" AND c.numero_nota_fiscal ILIKE $%d", argCount)
+		args = append(args, "%"+notaFiscal+"%")
+	}
+
+	if dataInicio != "" {
+		argCount++
+		query += fmt.Sprintf(" AND c.data_entrada >= $%d", argCount)
+		args = append(args, dataInicio)
+	}
+
+	if dataFim != "" {
+		argCount++
+		query += fmt.Sprintf(" AND c.data_entrada <= $%d", argCount)
+		args = append(args, dataFim)
+	}
+
+	query += " ORDER BY c.data_entrada DESC"
+
+	rows, err := s.db.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar compras: %w", err)
 	}
@@ -137,4 +188,51 @@ func (s *CompraService) Listar(ctx context.Context, empresaID int, fornecedorID 
 	}
 
 	return compras, nil
+}
+func (s *CompraService) BuscarPorID(ctx context.Context, empresaID, id int) (*models.Compra, error) {
+	var c models.Compra
+	err := s.db.Pool.QueryRow(ctx,
+		`SELECT c.id_compra, c.empresa_id, c.fornecedor_id, c.usuario_id, c.numero_nota_fiscal,
+		        c.data_emissao, c.data_entrada, c.data_cadastro, c.valor_produtos, c.valor_total, c.status,
+		        f.razao_social as fornecedor_nome
+		 FROM compra c
+		 LEFT JOIN fornecedor f ON c.fornecedor_id = f.id_fornecedor
+		 WHERE c.id_compra = $1 AND c.empresa_id = $2`,
+		id, empresaID,
+	).Scan(
+		&c.ID, &c.EmpresaID, &c.FornecedorID, &c.UsuarioID, &c.NumeroNotaFiscal,
+		&c.DataEmissao, &c.DataEntrada, &c.DataCadastro, &c.ValorProdutos, &c.ValorTotal, &c.Status,
+		&c.FornecedorNome,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao buscar compra: %w", err)
+	}
+
+	// Buscar itens
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT ic.id_item_compra, ic.compra_id, ic.produto_id, ic.sequencia, ic.quantidade,
+		        ic.quantidade_recebida, ic.preco_unitario, ic.valor_total, ic.valor_desconto,
+		        ic.data_recebimento, p.nome as produto_nome
+		 FROM item_compra ic
+		 LEFT JOIN produto p ON ic.produto_id = p.id_produto
+		 WHERE ic.compra_id = $1`, id)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao buscar itens da compra: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var i models.ItemCompra
+		err := rows.Scan(
+			&i.ID, &i.CompraID, &i.ProdutoID, &i.Sequencia, &i.Quantidade,
+			&i.QuantidadeRecebida, &i.PrecoUnitario, &i.ValorTotal, &i.ValorDesconto,
+			&i.DataRecebimento, &i.ProdutoNome,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("erro ao ler linha de item: %w", err)
+		}
+		c.Itens = append(c.Itens, i)
+	}
+
+	return &c, nil
 }
