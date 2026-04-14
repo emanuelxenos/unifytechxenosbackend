@@ -71,3 +71,18 @@ type CriarUsuarioRequest struct {
 	LimiteDescontoPercentual float64 `json:"limite_desconto_percentual"`
 	PodeCancelarVenda        bool    `json:"pode_cancelar_venda"`
 }
+
+type AtualizarUsuarioRequest struct {
+	Nome                     string  `json:"nome"`
+	Login                    string  `json:"login"`
+	Senha                    string  `json:"senha,omitempty"`
+	Perfil                   string  `json:"perfil"`
+	CPF                      *string `json:"cpf,omitempty"`
+	Telefone                 *string `json:"telefone,omitempty"`
+	Email                    *string `json:"email,omitempty"`
+	PodeAbrirCaixa           bool    `json:"pode_abrir_caixa"`
+	PodeFecharCaixa          bool    `json:"pode_fechar_caixa"`
+	PodeDarDesconto          bool    `json:"pode_dar_desconto"`
+	LimiteDescontoPercentual float64 `json:"limite_desconto_percentual"`
+	PodeCancelarVenda        bool    `json:"pode_cancelar_venda"`
+}

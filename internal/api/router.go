@@ -130,6 +130,8 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 			r.Put("/api/empresa", empresaHandler.Atualizar)
 			r.Get("/api/usuarios", usuarioHandler.Listar)
 			r.Post("/api/usuarios", usuarioHandler.Criar)
+			r.Put("/api/usuarios/{id}", usuarioHandler.Atualizar)
+			r.Delete("/api/usuarios/{id}", usuarioHandler.Inativar)
 			r.Post("/api/backup", configHandler.Backup)
 			r.Post("/api/backup/restaurar", configHandler.Restaurar)
 		})

@@ -22,7 +22,7 @@ func (s *UsuarioService) Listar(ctx context.Context, empresaID int) ([]models.Us
 		`SELECT id_usuario, empresa_id, nome, login, perfil,
 		        pode_abrir_caixa, pode_fechar_caixa, pode_dar_desconto,
 		        limite_desconto_percentual, pode_cancelar_venda, ativo, data_cadastro
-		 FROM usuario WHERE empresa_id = $1 ORDER BY nome`, empresaID)
+		 FROM usuario WHERE empresa_id = $1 AND ativo = true ORDER BY nome`, empresaID)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar usuários: %w", err)
 	}
@@ -65,4 +65,57 @@ func (s *UsuarioService) Criar(ctx context.Context, empresaID int, req models.Cr
 	u.Login = req.Login
 	u.Perfil = req.Perfil
 	return &u, nil
+}
+
+func (s *UsuarioService) Atualizar(ctx context.Context, empresaID, userID int, req models.AtualizarUsuarioRequest) error {
+	var err error
+	if req.Senha != "" {
+		hash, err := utils.HashPassword(req.Senha)
+		if err != nil {
+			return fmt.Errorf("erro ao gerar hash: %w", err)
+		}
+
+		_, err = s.db.Pool.Exec(ctx,
+			`UPDATE usuario SET
+			    nome = $1, login = $2, senha_hash = $3, perfil = $4,
+			    cpf = $5, telefone = $6, email = $7,
+			    pode_abrir_caixa = $8, pode_fechar_caixa = $9, pode_dar_desconto = $10,
+			    limite_desconto_percentual = $11, pode_cancelar_venda = $12
+			 WHERE id_usuario = $13 AND empresa_id = $14`,
+			req.Nome, req.Login, hash, req.Perfil,
+			req.CPF, req.Telefone, req.Email,
+			req.PodeAbrirCaixa, req.PodeFecharCaixa, req.PodeDarDesconto,
+			req.LimiteDescontoPercentual, req.PodeCancelarVenda,
+			userID, empresaID,
+		)
+	} else {
+		_, err = s.db.Pool.Exec(ctx,
+			`UPDATE usuario SET
+			    nome = $1, login = $2, perfil = $3,
+			    cpf = $4, telefone = $5, email = $6,
+			    pode_abrir_caixa = $7, pode_fechar_caixa = $8, pode_dar_desconto = $9,
+			    limite_desconto_percentual = $10, pode_cancelar_venda = $11
+			 WHERE id_usuario = $12 AND empresa_id = $13`,
+			req.Nome, req.Login, req.Perfil,
+			req.CPF, req.Telefone, req.Email,
+			req.PodeAbrirCaixa, req.PodeFecharCaixa, req.PodeDarDesconto,
+			req.LimiteDescontoPercentual, req.PodeCancelarVenda,
+			userID, empresaID,
+		)
+	}
+
+	if err != nil {
+		return fmt.Errorf("erro ao atualizar usuário: %w", err)
+	}
+	return nil
+}
+
+func (s *UsuarioService) Inativar(ctx context.Context, empresaID, userID int) error {
+	_, err := s.db.Pool.Exec(ctx,
+		`UPDATE usuario SET ativo = false WHERE id_usuario = $1 AND empresa_id = $2`,
+		userID, empresaID)
+	if err != nil {
+		return fmt.Errorf("erro ao inativar usuário: %w", err)
+	}
+	return nil
 }
