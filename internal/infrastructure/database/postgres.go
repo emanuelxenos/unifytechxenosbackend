@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,7 +37,14 @@ func NewPostgresDB(databaseURL string) (*PostgresDB, error) {
 		return nil, fmt.Errorf("erro ao pingar o banco: %w", err)
 	}
 
-	return &PostgresDB{Pool: pool}, nil
+	db := &PostgresDB{Pool: pool}
+
+	// Inicializar banco se for a primeira vez
+	if err := db.InitializeSchema(ctx); err != nil {
+		log.Printf("⚠️ Alerta na inicialização do banco: %v", err)
+	}
+
+	return db, nil
 }
 
 func (db *PostgresDB) Close() {
@@ -46,4 +55,43 @@ func (db *PostgresDB) HealthCheck() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return db.Pool.Ping(ctx)
+}
+
+// InitializeSchema verifica se o banco precisa ser instalado e executa o init_db.sql
+func (db *PostgresDB) InitializeSchema(ctx context.Context) error {
+	lockFile := ".db_installed"
+	sqlFile := "init_db.sql"
+
+	// Verifica se o arquivo de trava já existe
+	if _, err := os.Stat(lockFile); err == nil {
+		return nil // Já instalado, pula
+	}
+
+	// Verifica se o arquivo SQL existe
+	if _, err := os.Stat(sqlFile); os.IsNotExist(err) {
+		return fmt.Errorf("arquivo %s não encontrado para instalação inicial", sqlFile)
+	}
+
+	log.Println("📦 Primeira execução detectada. Iniciando instalação do banco de dados...")
+
+	// Lê o script SQL
+	content, err := os.ReadFile(sqlFile)
+	if err != nil {
+		return fmt.Errorf("erro ao ler arquivo SQL: %w", err)
+	}
+
+	// Executa o script
+	_, err = db.Pool.Exec(ctx, string(content))
+	if err != nil {
+		return fmt.Errorf("erro ao executar script de instalação: %w", err)
+	}
+
+	// Cria o arquivo de trava
+	err = os.WriteFile(lockFile, []byte(time.Now().Format(time.RFC3339)), 0644)
+	if err != nil {
+		return fmt.Errorf("erro ao criar arquivo de trava %s: %w", lockFile, err)
+	}
+
+	log.Println("✅ Banco de dados instalado e configurado com sucesso!")
+	return nil
 }
