@@ -25,7 +25,12 @@ type Empresa struct {
 	RegimeTributario   string     `json:"regime_tributario" db:"regime_tributario"`
 	Moeda              string     `json:"moeda" db:"moeda"`
 	CasasDecimais      int        `json:"casas_decimais" db:"casas_decimais"`
+	FusoHorario        string     `json:"fuso_horario" db:"fuso_horario"`
+	LogotipoURL        *string    `json:"logotipo_url,omitempty" db:"logotipo_url"`
+	CorPrimaria        string     `json:"cor_primaria" db:"cor_primaria"`
+	CorSecundaria      string     `json:"cor_secundaria" db:"cor_secundaria"`
 	Ativo              bool       `json:"ativo" db:"ativo"`
 	DataCadastro       time.Time  `json:"data_cadastro" db:"data_cadastro"`
 	DataAtualizacao    *time.Time `json:"data_atualizacao,omitempty" db:"data_atualizacao"`
+	Observacoes        *string    `json:"observacoes,omitempty" db:"observacoes"`
 }

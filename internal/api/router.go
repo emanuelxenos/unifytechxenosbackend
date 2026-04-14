@@ -31,6 +31,7 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 	relatorioHandler := handlers.NewRelatorioHandler(db)
 	configHandler := handlers.NewConfigHandler(db)
 	usuarioHandler := handlers.NewUsuarioHandler(db)
+	empresaHandler := handlers.NewEmpresaHandler(db)
 
 	// Rotas públicas
 	r.Get("/health", authHandler.Health)
@@ -125,6 +126,8 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 
 			r.Get("/api/config", configHandler.Listar)
 			r.Put("/api/config", configHandler.Atualizar)
+			r.Get("/api/empresa", empresaHandler.Buscar)
+			r.Put("/api/empresa", empresaHandler.Atualizar)
 			r.Get("/api/usuarios", usuarioHandler.Listar)
 			r.Post("/api/usuarios", usuarioHandler.Criar)
 			r.Post("/api/backup", configHandler.Backup)
