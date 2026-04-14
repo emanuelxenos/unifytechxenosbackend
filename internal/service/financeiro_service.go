@@ -133,10 +133,10 @@ func (s *FinanceiroService) ReceberConta(ctx context.Context, empresaID, contaID
 	return err
 }
 
-func (s *FinanceiroService) FluxoCaixa(ctx context.Context, empresaID int, dataInicio, dataFim *string) ([]models.FluxoCaixaItem, error) {
-	query := `SELECT data, tipo, valor FROM vw_fluxo_caixa WHERE 1=1`
-	args := []interface{}{}
-	idx := 1
+func (s *FinanceiroService) FluxoCaixa(ctx context.Context, empresaID int, dataInicio, dataFim *string) (*models.FluxoCaixaResponse, error) {
+	query := `SELECT data, tipo, valor FROM vw_fluxo_caixa WHERE empresa_id = $1`
+	args := []interface{}{empresaID}
+	idx := 2
 
 	if dataInicio != nil && *dataInicio != "" {
 		query += fmt.Sprintf(` AND data >= $%d::date`, idx)
@@ -156,11 +156,20 @@ func (s *FinanceiroService) FluxoCaixa(ctx context.Context, empresaID int, dataI
 	}
 	defer rows.Close()
 
-	var items []models.FluxoCaixaItem
+	var resp models.FluxoCaixaResponse
 	for rows.Next() {
 		var item models.FluxoCaixaItem
-		rows.Scan(&item.Data, &item.Tipo, &item.Valor)
-		items = append(items, item)
+		if err := rows.Scan(&item.Data, &item.Tipo, &item.Valor); err != nil {
+			continue
+		}
+		resp.Items = append(resp.Items, item)
+
+		if item.Valor > 0 {
+			resp.TotalEntrada += item.Valor
+		} else {
+			resp.TotalSaida += -item.Valor
+		}
+		resp.Saldo += item.Valor
 	}
-	return items, nil
+	return &resp, nil
 }

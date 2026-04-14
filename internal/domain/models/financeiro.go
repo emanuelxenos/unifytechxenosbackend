@@ -69,3 +69,10 @@ type FluxoCaixaItem struct {
 	Tipo  string    `json:"tipo" db:"tipo"`
 	Valor float64   `json:"valor" db:"valor"`
 }
+
+type FluxoCaixaResponse struct {
+	Items        []FluxoCaixaItem `json:"items"`
+	TotalEntrada float64          `json:"total_entrada"`
+	TotalSaida   float64          `json:"total_saida"`
+	Saldo        float64          `json:"saldo"`
+}

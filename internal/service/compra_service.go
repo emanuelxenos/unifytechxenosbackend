@@ -61,6 +61,18 @@ func (s *CompraService) Criar(ctx context.Context, empresaID, usuarioID int, req
 		return nil, fmt.Errorf("erro ao confirmar: %w", err)
 	}
 
+	// Criar Conta a Pagar Automaticamente
+	// A descrição será: "Compra NF [NF] - [Fornecedor]"
+	var fornecedorNome string
+	_ = s.db.Pool.QueryRow(ctx, "SELECT razao_social FROM fornecedor WHERE id_fornecedor = $1", req.FornecedorID).Scan(&fornecedorNome)
+
+	descricao := fmt.Sprintf("Compra NF %s - %s", req.NumeroNotaFiscal, fornecedorNome)
+	_, _ = s.db.Pool.Exec(ctx,
+		`INSERT INTO conta_pagar (empresa_id, fornecedor_id, compra_id, descricao, valor_original, data_vencimento, status, usuario_id)
+		 VALUES ($1, $2, $3, $4, $5, CURRENT_DATE + INTERVAL '30 days', 'aberta', $6)`,
+		empresaID, req.FornecedorID, compra.ID, descricao, valorTotal, usuarioID,
+	)
+
 	compra.EmpresaID = empresaID
 	compra.ValorTotal = valorTotal
 	return &compra, nil

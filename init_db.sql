@@ -539,4 +539,52 @@ CREATE INDEX IF NOT EXISTS idx_produto_codigo_barras ON produto(codigo_barras);
 CREATE INDEX IF NOT EXISTS idx_venda_data ON venda(data_venda);
 CREATE INDEX IF NOT EXISTS idx_venda_sessao ON venda(sessao_caixa_id);
 CREATE INDEX IF NOT EXISTS idx_item_venda_venda ON item_venda(venda_id);
-CREATE INDEX IF NOT EXISTS idx_item_venda_produto ON item_venda(produto_id);
+-- View para Fluxo de Caixa Consolidado
+CREATE OR REPLACE VIEW vw_fluxo_caixa AS
+-- Entradas de Vendas (Dinheiro/PIX imediato no caixa)
+SELECT 
+    DATE(vp.data_processamento) as data,
+    'venda' as tipo,
+    vp.valor as valor,
+    v.empresa_id
+FROM venda_pagamento vp
+JOIN venda v ON vp.venda_id = v.id_venda
+WHERE vp.status = 'aprovado'
+
+UNION ALL
+
+-- Entradas de Contas Recebidas
+SELECT 
+    data_recebimento as data,
+    'recebimento' as tipo,
+    valor_recebido as valor,
+    empresa_id
+FROM conta_receber
+WHERE status = 'recebida'
+
+UNION ALL
+
+-- Saídas de Contas Pagas (Fornecedores/Despesas)
+SELECT 
+    data_pagamento as data,
+    'pagamento' as tipo,
+    -valor_pago as valor,
+    empresa_id
+FROM conta_pagar
+WHERE status = 'paga'
+
+UNION ALL
+
+-- Movimentações Manuais (Sangrias/Suprimentos)
+SELECT 
+    DATE(data_movimentacao) as data,
+    tipo,
+    CASE WHEN tipo = 'sangria' THEN -valor ELSE valor END as valor,
+    empresa_id
+FROM caixa_movimentacao
+WHERE tipo IN ('sangria', 'suprimento');
+
+-- Índices adicionais para performance financeira
+CREATE INDEX IF NOT EXISTS idx_conta_pagar_vencimento ON conta_pagar(empresa_id, data_vencimento);
+CREATE INDEX IF NOT EXISTS idx_conta_receber_vencimento ON conta_receber(empresa_id, data_vencimento);
+CREATE INDEX IF NOT EXISTS idx_venda_pagamento_data ON venda_pagamento(data_processamento);
