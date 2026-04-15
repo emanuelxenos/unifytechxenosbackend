@@ -11,6 +11,7 @@ import (
 	"erp-backend/internal/domain/models"
 	"erp-backend/internal/infrastructure/database"
 	"erp-backend/internal/service"
+	"erp-backend/pkg/utils"
 )
 
 type CategoriaHandler struct {
@@ -25,15 +26,24 @@ func NewCategoriaHandler(db *database.PostgresDB) *CategoriaHandler {
 
 func (h *CategoriaHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	search := r.URL.Query().Get("search")
 
-	categorias, err := h.service.Listar(r.Context(), claims.EmpresaID)
+	categorias, total, err := h.service.Listar(r.Context(), claims.EmpresaID, page, limit, search)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(categorias)
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 50
+	}
+
+	utils.JSONPaginated(w, http.StatusOK, categorias, total, page, limit)
 }
 
 func (h *CategoriaHandler) Criar(w http.ResponseWriter, r *http.Request) {

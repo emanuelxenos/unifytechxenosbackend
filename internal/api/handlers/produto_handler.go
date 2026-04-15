@@ -26,6 +26,7 @@ func (h *ProdutoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	search := r.URL.Query().Get("search")
 	catStr := r.URL.Query().Get("categoria_id")
 	var catID *int
 	if catStr != "" {
@@ -33,7 +34,7 @@ func (h *ProdutoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 		catID = &id
 	}
 
-	produtos, total, err := h.produtoService.Listar(r.Context(), claims.EmpresaID, page, limit, catID)
+	produtos, total, err := h.produtoService.Listar(r.Context(), claims.EmpresaID, page, limit, catID, search)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return

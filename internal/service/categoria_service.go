@@ -16,15 +16,52 @@ func NewCategoriaService(db *database.PostgresDB) *CategoriaService {
 	return &CategoriaService{db: db}
 }
 
-func (s *CategoriaService) Listar(ctx context.Context, empresaID int) ([]models.Categoria, error) {
+func (s *CategoriaService) Listar(ctx context.Context, empresaID, page, limit int, search string) ([]models.Categoria, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	offset := (page - 1) * limit
+
+	// Count total
+	countQuery := `SELECT COUNT(*) FROM categoria WHERE empresa_id = $1 AND ativo = true`
+	args := []interface{}{empresaID}
+	argIdx := 2
+
+	if search != "" {
+		countQuery += fmt.Sprintf(` AND nome ILIKE $%d`, argIdx)
+		args = append(args, "%"+search+"%")
+		argIdx++
+	}
+
+	var total int
+	err := s.db.Pool.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("erro ao contar categorias: %w", err)
+	}
+
+	// Query categorias
 	query := `SELECT id_categoria, empresa_id, nome, descricao, categoria_pai_id, nivel, ativo, ordem_exibicao, data_cadastro
 	          FROM categoria
-	          WHERE empresa_id = $1 AND ativo = true
-	          ORDER BY ordem_exibicao, nome`
+	          WHERE empresa_id = $1 AND ativo = true`
 
-	rows, err := s.db.Pool.Query(ctx, query, empresaID)
+	queryArgs := []interface{}{empresaID}
+	qArgIdx := 2
+
+	if search != "" {
+		query += fmt.Sprintf(` AND nome ILIKE $%d`, qArgIdx)
+		queryArgs = append(queryArgs, "%"+search+"%")
+		qArgIdx++
+	}
+
+	query += fmt.Sprintf(` ORDER BY ordem_exibicao, nome LIMIT $%d OFFSET $%d`, qArgIdx, qArgIdx+1)
+	queryArgs = append(queryArgs, limit, offset)
+
+	rows, err := s.db.Pool.Query(ctx, query, queryArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao listar categorias: %w", err)
+		return nil, 0, fmt.Errorf("erro ao listar categorias: %w", err)
 	}
 	defer rows.Close()
 
@@ -41,7 +78,7 @@ func (s *CategoriaService) Listar(ctx context.Context, empresaID int) ([]models.
 		categorias = append(categorias, c)
 	}
 
-	return categorias, nil
+	return categorias, total, nil
 }
 
 func (s *CategoriaService) Criar(ctx context.Context, empresaID int, req models.CriarCategoriaRequest) (*models.Categoria, error) {

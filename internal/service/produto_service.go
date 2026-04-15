@@ -16,7 +16,7 @@ func NewProdutoService(db *database.PostgresDB) *ProdutoService {
 	return &ProdutoService{db: db}
 }
 
-func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int, categoriaID *int) ([]models.Produto, int, error) {
+func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int, categoriaID *int, search string) ([]models.Produto, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -27,8 +27,7 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 
 	// Count total
 	countQuery := `SELECT COUNT(*) FROM produto WHERE empresa_id = $1 AND ativo = true`
-	var args []interface{}
-	args = append(args, empresaID)
+	args := []interface{}{empresaID}
 	argIdx := 2
 
 	if categoriaID != nil {
@@ -37,8 +36,17 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 		argIdx++
 	}
 
+	if search != "" {
+		countQuery += fmt.Sprintf(` AND (nome ILIKE $%d OR codigo_barras ILIKE $%d)`, argIdx, argIdx)
+		args = append(args, "%"+search+"%")
+		argIdx++
+	}
+
 	var total int
-	s.db.Pool.QueryRow(ctx, countQuery, args...).Scan(&total)
+	err := s.db.Pool.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("erro ao contar produtos: %w", err)
+	}
 
 	// Query produtos
 	query := `SELECT p.id_produto, p.empresa_id, p.categoria_id, p.codigo_barras,
@@ -57,6 +65,12 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 	if categoriaID != nil {
 		query += fmt.Sprintf(` AND p.categoria_id = $%d`, qArgIdx)
 		queryArgs = append(queryArgs, *categoriaID)
+		qArgIdx++
+	}
+
+	if search != "" {
+		query += fmt.Sprintf(` AND (p.nome ILIKE $%d OR p.codigo_barras ILIKE $%d)`, qArgIdx, qArgIdx)
+		queryArgs = append(queryArgs, "%"+search+"%")
 		qArgIdx++
 	}
 
