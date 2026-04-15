@@ -23,6 +23,7 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 	caixaHandler := handlers.NewCaixaHandler(db)
 	vendaHandler := handlers.NewVendaHandler(db)
 	produtoHandler := handlers.NewProdutoHandler(db)
+	categoriaHandler := handlers.NewCategoriaHandler(db)
 	estoqueHandler := handlers.NewEstoqueHandler(db)
 	clienteHandler := handlers.NewClienteHandler(db)
 	fornecedorHandler := handlers.NewFornecedorHandler(db)
@@ -58,6 +59,9 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 		r.Get("/api/vendas/{id}", vendaHandler.BuscarPorID)
 		r.Post("/api/vendas/{id}/cancelar", vendaHandler.Cancelar)
 
+		// Categorias
+		r.Get("/api/categorias", categoriaHandler.Listar)
+
 		// Produtos
 		r.Get("/api/produtos", produtoHandler.Listar)
 		r.Get("/api/produtos/busca", produtoHandler.Buscar)
@@ -77,6 +81,11 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 		// Gerente+ (produtos, estoque, compras, financeiro)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireProfile("gerente"))
+
+			// Categorias CRUD
+			r.Post("/api/categorias", categoriaHandler.Criar)
+			r.Put("/api/categorias/{id}", categoriaHandler.Atualizar)
+			r.Delete("/api/categorias/{id}", categoriaHandler.Inativar)
 
 			// Produtos CRUD
 			r.Post("/api/produtos", produtoHandler.Criar)

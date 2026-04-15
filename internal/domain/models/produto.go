@@ -4,17 +4,6 @@ import (
 	"time"
 )
 
-type Categoria struct {
-	ID             int       `json:"id_categoria" db:"id_categoria"`
-	EmpresaID      int       `json:"empresa_id" db:"empresa_id"`
-	Nome           string    `json:"nome" db:"nome"`
-	Descricao      *string   `json:"descricao,omitempty" db:"descricao"`
-	CategoriaPaiID *int      `json:"categoria_pai_id,omitempty" db:"categoria_pai_id"`
-	Nivel          int       `json:"nivel" db:"nivel"`
-	Ativo          bool      `json:"ativo" db:"ativo"`
-	OrdemExibicao  int       `json:"ordem_exibicao" db:"ordem_exibicao"`
-	DataCadastro   time.Time `json:"data_cadastro" db:"data_cadastro"`
-}
 
 type Produto struct {
 	ID                int        `json:"id_produto" db:"id_produto"`
