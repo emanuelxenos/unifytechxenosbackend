@@ -453,6 +453,19 @@ CREATE TABLE IF NOT EXISTS auditoria (
     user_agent TEXT
 );
 
+CREATE TABLE IF NOT EXISTS backup (
+    id_backup SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresa(id_empresa) ON DELETE CASCADE,
+    nome_arquivo VARCHAR(200) NOT NULL,
+    caminho VARCHAR(500) NOT NULL,
+    tamanho BIGINT,
+    data_backup TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    tipo VARCHAR(20) DEFAULT 'automatico',
+    status VARCHAR(20) DEFAULT 'sucesso',
+    observacoes TEXT,
+    usuario_id INTEGER REFERENCES usuario(id_usuario)
+);
+
 -- Triggers
 CREATE OR REPLACE FUNCTION gerar_numero_venda()
 RETURNS TRIGGER AS $$

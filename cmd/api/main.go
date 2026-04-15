@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"erp-backend/internal/api"
 	"erp-backend/internal/infrastructure/database"
 	ws "erp-backend/internal/infrastructure/websocket"
+	"erp-backend/internal/repository"
+	"erp-backend/internal/service"
 	"erp-backend/pkg/config"
 	"erp-backend/pkg/utils"
 )
@@ -31,6 +34,13 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 	log.Println("✅ WebSocket Hub iniciado")
+
+	// Configurar e Iniciar Scheduler de Backups Automáticos
+	configSvc := service.NewConfigService(db)
+	backupRepo := repository.NewBackupRepository(db)
+	backupSvc := service.NewBackupService(cfg, backupRepo, configSvc)
+	backupScheduler := service.NewBackupScheduler(db, configSvc, backupSvc, backupRepo)
+	go backupScheduler.Start(context.Background())
 
 	// Configurar rotas
 	router := api.NewRouter(db, cfg, hub)

@@ -7,16 +7,25 @@ import (
 	"erp-backend/internal/api/middleware"
 	"erp-backend/internal/domain/models"
 	"erp-backend/internal/infrastructure/database"
+	"erp-backend/internal/repository"
 	"erp-backend/internal/service"
+	"erp-backend/pkg/config"
 	"erp-backend/pkg/utils"
 )
 
 type ConfigHandler struct {
 	configService *service.ConfigService
+	backupService *service.BackupService
 }
 
-func NewConfigHandler(db *database.PostgresDB) *ConfigHandler {
-	return &ConfigHandler{configService: service.NewConfigService(db)}
+func NewConfigHandler(db *database.PostgresDB, cfg *config.Config) *ConfigHandler {
+	configSvc := service.NewConfigService(db)
+	backupRepo := repository.NewBackupRepository(db)
+	backupSvc := service.NewBackupService(cfg, backupRepo, configSvc)
+	return &ConfigHandler{
+		configService: configSvc,
+		backupService: backupSvc,
+	}
 }
 
 func (h *ConfigHandler) Listar(w http.ResponseWriter, r *http.Request) {
@@ -45,9 +54,26 @@ func (h *ConfigHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ConfigHandler) Backup(w http.ResponseWriter, r *http.Request) {
-	utils.JSONMessage(w, http.StatusOK, "Backup criado com sucesso")
+	claims := middleware.GetUserClaims(r)
+	
+	err := h.backupService.ExecutarBackup(r.Context(), claims.EmpresaID, &claims.UserID, "manual")
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSONMessage(w, http.StatusOK, "Backup iniciado e concluído com sucesso")
+}
+
+func (h *ConfigHandler) ListarBackups(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	backups, err := h.backupService.ListarBackups(r.Context(), claims.EmpresaID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, "Erro ao listar backups")
+		return
+	}
+	utils.JSON(w, http.StatusOK, backups)
 }
 
 func (h *ConfigHandler) Restaurar(w http.ResponseWriter, r *http.Request) {
-	utils.JSONMessage(w, http.StatusOK, "Backup restaurado com sucesso")
+	utils.JSONMessage(w, http.StatusOK, "Restaurar backup será implementado em breve")
 }

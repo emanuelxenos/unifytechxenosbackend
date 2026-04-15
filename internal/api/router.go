@@ -29,7 +29,7 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 	compraHandler := handlers.NewCompraHandler(db)
 	financeiroHandler := handlers.NewFinanceiroHandler(db)
 	relatorioHandler := handlers.NewRelatorioHandler(db)
-	configHandler := handlers.NewConfigHandler(db)
+	configHandler := handlers.NewConfigHandler(db, cfg)
 	usuarioHandler := handlers.NewUsuarioHandler(db)
 	empresaHandler := handlers.NewEmpresaHandler(db)
 
@@ -132,6 +132,8 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 			r.Post("/api/usuarios", usuarioHandler.Criar)
 			r.Put("/api/usuarios/{id}", usuarioHandler.Atualizar)
 			r.Delete("/api/usuarios/{id}", usuarioHandler.Inativar)
+			
+			r.Get("/api/backup", configHandler.ListarBackups)
 			r.Post("/api/backup", configHandler.Backup)
 			r.Post("/api/backup/restaurar", configHandler.Restaurar)
 		})
