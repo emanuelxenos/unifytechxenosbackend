@@ -42,6 +42,41 @@ type ProdutoMaisVendido struct {
 	ValorTotal  float64 `json:"valor_total"`
 }
 
+func (s *RelatorioService) preencherDetalhesVenda(ctx context.Context, rel *RelatorioVendasDia, empresaID int, condicaoData string, args ...interface{}) {
+	// Por caixa
+	queryCaixa := fmt.Sprintf(`SELECT cf.nome, COUNT(*), COALESCE(SUM(v.valor_total), 0)
+		 FROM venda v JOIN caixa_fisico cf ON v.caixa_fisico_id = cf.id_caixa_fisico
+		 WHERE v.empresa_id = $1 AND %s AND v.status = 'concluida'
+		 GROUP BY cf.nome`, condicaoData)
+	
+	rows, _ := s.db.Pool.Query(ctx, queryCaixa, args...)
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var c RelatorioVendasCaixa
+			rows.Scan(&c.Caixa, &c.Total, &c.ValorTotal)
+			rel.PorCaixa = append(rel.PorCaixa, c)
+		}
+	}
+
+	// Por forma de pagamento
+	queryFp := fmt.Sprintf(`SELECT fp.nome, COUNT(*), COALESCE(SUM(vp.valor), 0)
+		 FROM venda_pagamento vp
+		 JOIN venda v ON vp.venda_id = v.id_venda
+		 JOIN forma_pagamento fp ON vp.forma_pagamento_id = fp.id_forma_pagamento
+		 WHERE v.empresa_id = $1 AND %s AND v.status = 'concluida'
+		 GROUP BY fp.nome`, condicaoData)
+	rows2, _ := s.db.Pool.Query(ctx, queryFp, args...)
+	if rows2 != nil {
+		defer rows2.Close()
+		for rows2.Next() {
+			var f RelatorioFormaPagamento
+			rows2.Scan(&f.FormaPagamento, &f.Total, &f.ValorTotal)
+			rel.PorFormaPagamento = append(rel.PorFormaPagamento, f)
+		}
+	}
+}
+
 func (s *RelatorioService) VendasDia(ctx context.Context, empresaID int) (*RelatorioVendasDia, error) {
 	rel := &RelatorioVendasDia{}
 
@@ -54,37 +89,7 @@ func (s *RelatorioService) VendasDia(ctx context.Context, empresaID int) (*Relat
 		rel.TicketMedio = rel.ValorTotal / float64(rel.TotalVendas)
 	}
 
-	// Por caixa
-	rows, _ := s.db.Pool.Query(ctx,
-		`SELECT cf.nome, COUNT(*), COALESCE(SUM(v.valor_total), 0)
-		 FROM venda v JOIN caixa_fisico cf ON v.caixa_fisico_id = cf.id_caixa_fisico
-		 WHERE v.empresa_id = $1 AND DATE(v.data_venda) = CURRENT_DATE AND v.status = 'concluida'
-		 GROUP BY cf.nome`, empresaID)
-	if rows != nil {
-		defer rows.Close()
-		for rows.Next() {
-			var c RelatorioVendasCaixa
-			rows.Scan(&c.Caixa, &c.Total, &c.ValorTotal)
-			rel.PorCaixa = append(rel.PorCaixa, c)
-		}
-	}
-
-	// Por forma de pagamento
-	rows2, _ := s.db.Pool.Query(ctx,
-		`SELECT fp.nome, COUNT(*), COALESCE(SUM(vp.valor), 0)
-		 FROM venda_pagamento vp
-		 JOIN venda v ON vp.venda_id = v.id_venda
-		 JOIN forma_pagamento fp ON vp.forma_pagamento_id = fp.id_forma_pagamento
-		 WHERE v.empresa_id = $1 AND DATE(v.data_venda) = CURRENT_DATE AND v.status = 'concluida'
-		 GROUP BY fp.nome`, empresaID)
-	if rows2 != nil {
-		defer rows2.Close()
-		for rows2.Next() {
-			var f RelatorioFormaPagamento
-			rows2.Scan(&f.FormaPagamento, &f.Total, &f.ValorTotal)
-			rel.PorFormaPagamento = append(rel.PorFormaPagamento, f)
-		}
-	}
+	s.preencherDetalhesVenda(ctx, rel, empresaID, "DATE(v.data_venda) = CURRENT_DATE", empresaID)
 
 	return rel, nil
 }
@@ -98,9 +103,14 @@ func (s *RelatorioService) VendasMes(ctx context.Context, empresaID int) (*Relat
 		 AND EXTRACT(YEAR FROM data_venda) = EXTRACT(YEAR FROM CURRENT_DATE)
 		 AND status = 'concluida'`,
 		empresaID).Scan(&rel.TotalVendas, &rel.ValorTotal)
+		
 	if rel.TotalVendas > 0 {
 		rel.TicketMedio = rel.ValorTotal / float64(rel.TotalVendas)
 	}
+
+	condicao := "EXTRACT(MONTH FROM v.data_venda) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM v.data_venda) = EXTRACT(YEAR FROM CURRENT_DATE)"
+	s.preencherDetalhesVenda(ctx, rel, empresaID, condicao, empresaID)
+
 	return rel, nil
 }
 
@@ -112,9 +122,14 @@ func (s *RelatorioService) VendasPeriodo(ctx context.Context, empresaID int, dat
 		 AND DATE(data_venda) >= $2::date AND DATE(data_venda) <= $3::date
 		 AND status = 'concluida'`,
 		empresaID, dataInicio, dataFim).Scan(&rel.TotalVendas, &rel.ValorTotal)
+		
 	if rel.TotalVendas > 0 {
 		rel.TicketMedio = rel.ValorTotal / float64(rel.TotalVendas)
 	}
+
+	condicao := "DATE(v.data_venda) >= $2::date AND DATE(v.data_venda) <= $3::date"
+	s.preencherDetalhesVenda(ctx, rel, empresaID, condicao, empresaID, dataInicio, dataFim)
+
 	return rel, nil
 }
 
@@ -149,4 +164,45 @@ func (s *RelatorioService) MaisVendidos(ctx context.Context, empresaID int, peri
 		list = append(list, p)
 	}
 	return list, nil
+}
+
+type RelatorioEstoque struct {
+	TotalProdutos   int     `json:"total_produtos"`
+	ValorTotalCusto float64 `json:"valor_total_custo"`
+	ValorTotalVenda float64 `json:"valor_total_venda"`
+	ProdutosBaixos  int     `json:"produtos_baixo_estoque"`
+}
+
+func (s *RelatorioService) EstoqueResumo(ctx context.Context, empresaID int) (*RelatorioEstoque, error) {
+	rel := &RelatorioEstoque{}
+	err := s.db.Pool.QueryRow(ctx,
+		`SELECT 
+			COUNT(id_produto),
+			COALESCE(SUM(estoque_atual * preco_custo), 0),
+			COALESCE(SUM(estoque_atual * preco_venda), 0),
+			COUNT(CASE WHEN estoque_atual <= estoque_minimo AND controlar_estoque = TRUE THEN 1 END)
+		 FROM produto WHERE empresa_id = $1 AND ativo = TRUE`,
+		empresaID).Scan(&rel.TotalProdutos, &rel.ValorTotalCusto, &rel.ValorTotalVenda, &rel.ProdutosBaixos)
+	return rel, err
+}
+
+type RelatorioFinanceiro struct {
+	ContasPagarAbertas int     `json:"contas_pagar_abertas"`
+	ValorPagarAberto   float64 `json:"valor_pagar_aberto"`
+	ContasReceberAberto int     `json:"contas_receber_abertas"`
+	ValorReceberAberto  float64 `json:"valor_receber_aberto"`
+	SaldoCaixaDia      float64 `json:"saldo_caixa_dia"`
+}
+
+func (s *RelatorioService) FinanceiroResumo(ctx context.Context, empresaID int) (*RelatorioFinanceiro, error) {
+	rel := &RelatorioFinanceiro{}
+	
+	s.db.Pool.QueryRow(ctx, `SELECT COUNT(*), COALESCE(SUM(valor_original - valor_pago), 0) FROM conta_pagar WHERE empresa_id = $1 AND status = 'aberta'`, empresaID).Scan(&rel.ContasPagarAbertas, &rel.ValorPagarAberto)
+	s.db.Pool.QueryRow(ctx, `SELECT COUNT(*), COALESCE(SUM(valor_original - valor_recebido), 0) FROM conta_receber WHERE empresa_id = $1 AND status = 'aberta'`, empresaID).Scan(&rel.ContasReceberAberto, &rel.ValorReceberAberto)
+	s.db.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(CASE WHEN tipo = 'venda' OR tipo = 'recebimento' OR tipo = 'suprimento' THEN valor 
+								 WHEN tipo = 'pagamento' OR tipo = 'sangria' THEN -valor ELSE 0 END), 0)
+		FROM vw_fluxo_caixa WHERE empresa_id = $1 AND data = CURRENT_DATE`, empresaID).Scan(&rel.SaldoCaixaDia)
+		
+	return rel, nil
 }
