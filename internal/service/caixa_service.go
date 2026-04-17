@@ -209,3 +209,93 @@ func (s *CaixaService) Suprimento(ctx context.Context, empresaID, usuarioID int,
 
 	return err
 }
+
+func (s *CaixaService) ListarSessoes(ctx context.Context, empresaID int, inicio, fim *string) ([]models.SessaoCaixa, error) {
+	query := `SELECT id_sessao, empresa_id, caixa_fisico_id, usuario_id, codigo_sessao,
+	                 data_abertura, data_fechamento, saldo_inicial, total_vendas,
+	                 total_sangrias, total_suprimentos, saldo_final, status
+	          FROM sessao_caixa
+	          WHERE empresa_id = $1`
+
+	var args []interface{}
+	args = append(args, empresaID)
+
+	argCount := 2
+	if inicio != nil && *inicio != "" {
+		query += fmt.Sprintf(" AND DATE(data_abertura) >= $%d::date", argCount)
+		args = append(args, *inicio)
+		argCount++
+	}
+	if fim != nil && *fim != "" {
+		query += fmt.Sprintf(" AND DATE(data_abertura) <= $%d::date", argCount)
+		args = append(args, *fim)
+		argCount++
+	}
+
+	query += " ORDER BY data_abertura DESC"
+
+	rows, err := s.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao buscar sessões: %w", err)
+	}
+	defer rows.Close()
+
+	var sessoes []models.SessaoCaixa
+	for rows.Next() {
+		var s models.SessaoCaixa
+		err := rows.Scan(
+			&s.ID, &s.EmpresaID, &s.CaixaFisicoID, &s.UsuarioID, &s.CodigoSessao,
+			&s.DataAbertura, &s.DataFechamento, &s.SaldoInicial, &s.TotalVendas,
+			&s.TotalSangrias, &s.TotalSuprimentos, &s.SaldoFinal, &s.Status,
+		)
+		if err != nil {
+			continue
+		}
+		sessoes = append(sessoes, s)
+	}
+	return sessoes, nil
+}
+
+func (s *CaixaService) ListarMovimentacoes(ctx context.Context, empresaID int, inicio, fim *string) ([]models.CaixaMovimentacao, error) {
+	query := `SELECT id_caixa_movimentacao, empresa_id, sessao_caixa_id, tipo, valor,
+	                 motivo, observacao, data_movimentacao, usuario_id
+	          FROM caixa_movimentacao
+	          WHERE empresa_id = $1`
+
+	var args []interface{}
+	args = append(args, empresaID)
+
+	argCount := 2
+	if inicio != nil && *inicio != "" {
+		query += fmt.Sprintf(" AND DATE(data_movimentacao) >= $%d::date", argCount)
+		args = append(args, *inicio)
+		argCount++
+	}
+	if fim != nil && *fim != "" {
+		query += fmt.Sprintf(" AND DATE(data_movimentacao) <= $%d::date", argCount)
+		args = append(args, *fim)
+		argCount++
+	}
+
+	query += " ORDER BY data_movimentacao DESC"
+
+	rows, err := s.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao buscar movimentações: %w", err)
+	}
+	defer rows.Close()
+
+	var movs []models.CaixaMovimentacao
+	for rows.Next() {
+		var m models.CaixaMovimentacao
+		err := rows.Scan(
+			&m.ID, &m.EmpresaID, &m.SessaoCaixaID, &m.Tipo, &m.Valor,
+			&m.Motivo, &m.Observacao, &m.DataMovimentacao, &m.UsuarioID,
+		)
+		if err != nil {
+			continue
+		}
+		movs = append(movs, m)
+	}
+	return movs, nil
+}

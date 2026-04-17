@@ -52,6 +52,8 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 		r.Post("/api/caixa/fechar", caixaHandler.Fechar)
 		r.Post("/api/caixa/sangria", caixaHandler.Sangria)
 		r.Post("/api/caixa/suprimento", caixaHandler.Suprimento)
+		r.Get("/api/caixa/sessoes", caixaHandler.ListarSessoes)
+		r.Get("/api/caixa/movimentacoes", caixaHandler.ListarMovimentacoes)
 
 		// Vendas
 		r.Post("/api/vendas", vendaHandler.Criar)

@@ -227,7 +227,7 @@ func (s *VendaService) Cancelar(ctx context.Context, empresaID, vendaID int, req
 	return nil
 }
 
-func (s *VendaService) VendasDia(ctx context.Context, empresaID int, data *string) ([]models.Venda, error) {
+func (s *VendaService) ListarVendas(ctx context.Context, empresaID int, inicio, fim *string) ([]models.Venda, error) {
 	query := `SELECT v.id_venda, v.numero_venda, v.data_venda,
 	                 v.valor_total_produtos, v.valor_total_descontos,
 	                 v.valor_total, v.valor_pago, v.valor_troco,
@@ -240,12 +240,23 @@ func (s *VendaService) VendasDia(ctx context.Context, empresaID int, data *strin
 	var args []interface{}
 	args = append(args, empresaID)
 
-	if data != nil && *data != "" {
-		query += ` AND DATE(v.data_venda) = $2::date`
-		args = append(args, *data)
-	} else {
-		query += ` AND DATE(v.data_venda) = CURRENT_DATE`
+	argCount := 2
+	if inicio != nil && *inicio != "" {
+		query += fmt.Sprintf(" AND DATE(v.data_venda) >= $%d::date", argCount)
+		args = append(args, *inicio)
+		argCount++
 	}
+	if fim != nil && *fim != "" {
+		query += fmt.Sprintf(" AND DATE(v.data_venda) <= $%d::date", argCount)
+		args = append(args, *fim)
+		argCount++
+	}
+
+	// Se nenhum filtro for passado, padrão é hoje
+	if (inicio == nil || *inicio == "") && (fim == nil || *fim == "") {
+		query += " AND DATE(v.data_venda) = CURRENT_DATE"
+	}
+
 	query += ` ORDER BY v.data_venda DESC`
 
 	rows, err := s.db.Pool.Query(ctx, query, args...)

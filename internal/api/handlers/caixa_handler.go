@@ -100,3 +100,45 @@ func (h *CaixaHandler) Suprimento(w http.ResponseWriter, r *http.Request) {
 	}
 	utils.JSONMessage(w, http.StatusOK, "Suprimento registrado com sucesso")
 }
+
+func (h *CaixaHandler) ListarSessoes(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	inicio := r.URL.Query().Get("data_inicio")
+	fim := r.URL.Query().Get("data_fim")
+
+	var inicioPtr, fimPtr *string
+	if inicio != "" {
+		inicioPtr = &inicio
+	}
+	if fim != "" {
+		fimPtr = &fim
+	}
+
+	sessoes, err := h.caixaService.ListarSessoes(r.Context(), claims.EmpresaID, inicioPtr, fimPtr)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, sessoes)
+}
+
+func (h *CaixaHandler) ListarMovimentacoes(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	inicio := r.URL.Query().Get("data_inicio")
+	fim := r.URL.Query().Get("data_fim")
+
+	var inicioPtr, fimPtr *string
+	if inicio != "" {
+		inicioPtr = &inicio
+	}
+	if fim != "" {
+		fimPtr = &fim
+	}
+
+	movs, err := h.caixaService.ListarMovimentacoes(r.Context(), claims.EmpresaID, inicioPtr, fimPtr)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, movs)
+}

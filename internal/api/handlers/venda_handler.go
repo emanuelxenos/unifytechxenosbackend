@@ -81,13 +81,18 @@ func (h *VendaHandler) Cancelar(w http.ResponseWriter, r *http.Request) {
 
 func (h *VendaHandler) VendasDia(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
-	data := r.URL.Query().Get("data")
-	var dataPtr *string
-	if data != "" {
-		dataPtr = &data
+	inicio := r.URL.Query().Get("data_inicio")
+	fim := r.URL.Query().Get("data_fim")
+
+	var inicioPtr, fimPtr *string
+	if inicio != "" {
+		inicioPtr = &inicio
+	}
+	if fim != "" {
+		fimPtr = &fim
 	}
 
-	vendas, err := h.vendaService.VendasDia(r.Context(), claims.EmpresaID, dataPtr)
+	vendas, err := h.vendaService.ListarVendas(r.Context(), claims.EmpresaID, inicioPtr, fimPtr)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return
