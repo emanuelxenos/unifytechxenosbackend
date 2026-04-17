@@ -94,6 +94,77 @@ func (h *RelatorioHandler) FinanceiroResumo(w http.ResponseWriter, r *http.Reque
 	utils.JSON(w, http.StatusOK, rel)
 }
 
+func (h *RelatorioHandler) RelatorioDRE(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	
+	// Default para mês/ano atual se não informado
+	agora := time.Now()
+	mesStr := r.URL.Query().Get("mes")
+	anoStr := r.URL.Query().Get("ano")
+	
+	mes := int(agora.Month())
+	ano := agora.Year()
+	
+	if mesStr != "" {
+		fmt.Sscanf(mesStr, "%d", &mes)
+	}
+	if anoStr != "" {
+		fmt.Sscanf(anoStr, "%d", &ano)
+	}
+
+	rel, err := h.relatorioService.DREGerencial(r.Context(), claims.EmpresaID, mes, ano)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, rel)
+}
+
+func (h *RelatorioHandler) RelatorioInadimplencia(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	rel, err := h.relatorioService.InadimplenciaResumo(r.Context(), claims.EmpresaID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, rel)
+}
+
+func (h *RelatorioHandler) RelatorioCurvaABC(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	rel, err := h.relatorioService.CurvaABC(r.Context(), claims.EmpresaID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, rel)
+}
+
+func (h *RelatorioHandler) RelatorioComissoes(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	
+	agora := time.Now()
+	mesStr := r.URL.Query().Get("mes")
+	anoStr := r.URL.Query().Get("ano")
+	
+	mes := int(agora.Month())
+	ano := agora.Year()
+	
+	if mesStr != "" {
+		fmt.Sscanf(mesStr, "%d", &mes)
+	}
+	if anoStr != "" {
+		fmt.Sscanf(anoStr, "%d", &ano)
+	}
+
+	rel, err := h.relatorioService.ComissoesOperador(r.Context(), claims.EmpresaID, mes, ano)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, rel)
+}
+
 func (h *RelatorioHandler) ExportarPDF(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
 	tipo := r.URL.Query().Get("tipo")
@@ -122,6 +193,18 @@ func (h *RelatorioHandler) ExportarPDF(w http.ResponseWriter, r *http.Request) {
 	case "financeiro": 
 		titulo = "RESUMO FINANCEIRO"
 		subtitulo = "Fotografia de saldo aberto e movimento de caixa em: " + dataAtual
+	case "dre":
+		titulo = "DRE - DEMONSTRATIVO DE RESULTADO"
+		subtitulo = "Analise gerencial referente ao mes " + dataMes
+	case "inadimplencia":
+		titulo = "RELATORIO DE INADIMPLENCIA"
+		subtitulo = "Contas a receber vencidas ate " + dataAtual
+	case "abc":
+		titulo = "CURVA ABC DE PRODUTOS"
+		subtitulo = "Classificacao de faturamento (Ultimos 90 dias)"
+	case "comissoes":
+		titulo = "RELATORIO DE COMISSOES"
+		subtitulo = "Resumo por operador - Mes " + dataMes
 	default: 
 		titulo = "RELATORIO DE VENDAS E FATURAMENTO"
 		subtitulo = "Acumulado referente ao mes " + dataMes + " (Gerado em: " + dataAtual + ")"
@@ -175,6 +258,40 @@ func (h *RelatorioHandler) ExportarPDF(w http.ResponseWriter, r *http.Request) {
 		drawRow("Contas a Pagar (Aberto)", fmt.Sprintf("R$ %.2f", rel.ValorPagarAberto))
 		drawRow("Evolucao do Caixa no Dia", fmt.Sprintf("R$ %.2f", rel.SaldoCaixaDia))
 
+	} else if tipo == "dre" {
+		rel, err := h.relatorioService.DREGerencial(r.Context(), claims.EmpresaID, int(time.Now().Month()), time.Now().Year())
+		if err == nil {
+			pdf.Ln(5)
+			drawRow("Receita Bruta", fmt.Sprintf("R$ %.2f", rel.ReceitaBruta))
+			drawRow("Descontos", fmt.Sprintf("R$ %.2f", rel.Descontos))
+			drawRow("Receita Liquida", fmt.Sprintf("R$ %.2f", rel.ReceitaLiquida))
+			drawRow("CMV (Custo Mercadoria)", fmt.Sprintf("R$ %.2f", rel.CMV))
+			drawRow("Lucro Bruto", fmt.Sprintf("R$ %.2f", rel.LucroBruto))
+			drawRow("Despesas Operacionais", fmt.Sprintf("R$ %.2f", rel.Despesas))
+			drawRow("LUCRO LIQUIDO", fmt.Sprintf("R$ %.2f", rel.LucroLiquido))
+			drawRow("Margem de Lucro (%)", fmt.Sprintf("%.2f%%", rel.MargemPercentual))
+		}
+	} else if tipo == "inadimplencia" {
+		rel, err := h.relatorioService.InadimplenciaResumo(r.Context(), claims.EmpresaID)
+		if err == nil {
+			pdf.Ln(5)
+			drawRow("Total de Titulos Vencidos", fmt.Sprintf("%d faturas", rel.Quantidade))
+			drawRow("Valor Total em Atraso", fmt.Sprintf("R$ %.2f", rel.TotalVencido))
+		}
+	} else if tipo == "abc" {
+		rel, err := h.relatorioService.CurvaABC(r.Context(), claims.EmpresaID)
+		if err == nil {
+			pdf.Ln(5)
+			drawRow("Faturamento Periodo (90 dias)", fmt.Sprintf("R$ %.2f", rel.TotalFaturamento))
+			drawRow("Total de Itens Analisados", fmt.Sprintf("%d produtos", len(rel.Itens)))
+		}
+	} else if tipo == "comissoes" {
+		rel, err := h.relatorioService.ComissoesOperador(r.Context(), claims.EmpresaID, int(time.Now().Month()), time.Now().Year())
+		if err == nil {
+			pdf.Ln(5)
+			drawRow("Vendas do Mes", fmt.Sprintf("R$ %.2f", rel.TotalGeral))
+			drawRow("Total de Comissoes", fmt.Sprintf("R$ %.2f", rel.TotalComissao))
+		}
 	} else {
 		rel, err := h.relatorioService.VendasMes(r.Context(), claims.EmpresaID)
 		if err != nil {
@@ -238,6 +355,27 @@ func (h *RelatorioHandler) ExportarExcel(w http.ResponseWriter, r *http.Request)
 		f.SetCellValue("Sheet1", "B3", rel.ValorPagarAberto)
 		f.SetCellValue("Sheet1", "A4", "Saldo de Caixa:")
 		f.SetCellValue("Sheet1", "B4", rel.SaldoCaixaDia)
+	} else if tipo == "dre" {
+		rel, _ := h.relatorioService.DREGerencial(r.Context(), claims.EmpresaID, int(time.Now().Month()), time.Now().Year())
+		f.SetCellValue("Sheet1", "A1", "DRE Gerencial")
+		f.SetCellValue("Sheet1", "A2", "Receita Líquida:")
+		f.SetCellValue("Sheet1", "B2", rel.ReceitaLiquida)
+		f.SetCellValue("Sheet1", "A3", "CMV:")
+		f.SetCellValue("Sheet1", "B3", rel.CMV)
+		f.SetCellValue("Sheet1", "A4", "Lucro Líquido:")
+		f.SetCellValue("Sheet1", "B4", rel.LucroLiquido)
+	} else if tipo == "abc" {
+		rel, _ := h.relatorioService.CurvaABC(r.Context(), claims.EmpresaID)
+		f.SetCellValue("Sheet1", "A1", "Curva ABC de Produtos")
+		f.SetCellValue("Sheet1", "A2", "Produto")
+		f.SetCellValue("Sheet1", "B2", "Faturamento")
+		f.SetCellValue("Sheet1", "C2", "Classificação")
+		for i, item := range rel.Itens {
+			row := i + 3
+			f.SetCellValue("Sheet1", fmt.Sprintf("A%d", row), item.Nome)
+			f.SetCellValue("Sheet1", fmt.Sprintf("B%d", row), item.Faturamento)
+			f.SetCellValue("Sheet1", fmt.Sprintf("C%d", row), item.Classificacao)
+		}
 	} else {
 		rel, err := h.relatorioService.VendasMes(r.Context(), claims.EmpresaID)
 		if err != nil {

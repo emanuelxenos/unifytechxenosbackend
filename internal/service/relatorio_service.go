@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"erp-backend/internal/infrastructure/database"
+	"time"
 )
 
 type RelatorioService struct {
@@ -204,5 +205,215 @@ func (s *RelatorioService) FinanceiroResumo(ctx context.Context, empresaID int) 
 								 WHEN tipo = 'pagamento' OR tipo = 'sangria' THEN -valor ELSE 0 END), 0)
 		FROM vw_fluxo_caixa WHERE empresa_id = $1 AND data = CURRENT_DATE`, empresaID).Scan(&rel.SaldoCaixaDia)
 		
+	return rel, nil
+}
+
+type RelatorioDRE struct {
+	ReceitaBruta     float64 `json:"receita_bruta"`
+	Descontos        float64 `json:"descontos"`
+	ReceitaLiquida   float64 `json:"receita_liquida"`
+	CMV              float64 `json:"cmv"`
+	LucroBruto       float64 `json:"lucro_bruto"`
+	Despesas         float64 `json:"despesas"`
+	LucroLiquido     float64 `json:"lucro_liquido"`
+	MargemPercentual float64 `json:"margem_percentual"`
+}
+
+func (s *RelatorioService) DREGerencial(ctx context.Context, empresaID int, mes, ano int) (*RelatorioDRE, error) {
+	rel := &RelatorioDRE{}
+
+	// Receitas e Descontos
+	s.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(valor_total), 0), COALESCE(SUM(valor_total_descontos), 0)
+		 FROM venda WHERE empresa_id = $1 AND status = 'concluida'
+		 AND EXTRACT(MONTH FROM data_venda) = $2 AND EXTRACT(YEAR FROM data_venda) = $3`,
+		empresaID, mes, ano).Scan(&rel.ReceitaBruta, &rel.Descontos)
+
+	rel.ReceitaLiquida = rel.ReceitaBruta - rel.Descontos
+
+	// CMV (Custo da Mercadoria Vendida)
+	s.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(iv.quantidade * iv.preco_custo), 0)
+		 FROM item_venda iv
+		 JOIN venda v ON iv.venda_id = v.id_venda
+		 WHERE v.empresa_id = $1 AND v.status = 'concluida'
+		 AND EXTRACT(MONTH FROM v.data_venda) = $2 AND EXTRACT(YEAR FROM v.data_venda) = $3`,
+		empresaID, mes, ano).Scan(&rel.CMV)
+
+	rel.LucroBruto = rel.ReceitaLiquida - rel.CMV
+
+	// Despesas Operacionais (Contas Pagas no período)
+	s.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(valor_pago), 0)
+		 FROM conta_pagar WHERE empresa_id = $1 AND status = 'paga'
+		 AND EXTRACT(MONTH FROM data_pagamento) = $2 AND EXTRACT(YEAR FROM data_pagamento) = $3`,
+		empresaID, mes, ano).Scan(&rel.Despesas)
+
+	rel.LucroLiquido = rel.LucroBruto - rel.Despesas
+	if rel.ReceitaLiquida > 0 {
+		rel.MargemPercentual = (rel.LucroLiquido / rel.ReceitaLiquida) * 100
+	}
+
+	return rel, nil
+}
+
+type InadimplenciaItem struct {
+	ID             int     `json:"id"`
+	Cliente        string  `json:"cliente"`
+	Valor          float64 `json:"valor"`
+	DataVencimento string  `json:"data_vencimento"`
+	DiasAtraso     int     `json:"dias_atraso"`
+}
+
+type RelatorioInadimplencia struct {
+	TotalVencido float64             `json:"total_vencido"`
+	Quantidade   int                 `json:"quantidade"`
+	Itens        []InadimplenciaItem `json:"itens"`
+}
+
+func (s *RelatorioService) InadimplenciaResumo(ctx context.Context, empresaID int) (*RelatorioInadimplencia, error) {
+	rel := &RelatorioInadimplencia{Itens: []InadimplenciaItem{}}
+
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT cr.id_conta_receber, c.nome, (cr.valor_original - cr.valor_recebido), cr.data_vencimento, 
+		        CURRENT_DATE - cr.data_vencimento as dias_atraso
+		 FROM conta_receber cr
+		 JOIN cliente c ON cr.cliente_id = c.id_cliente
+		 WHERE cr.empresa_id = $1 AND cr.status = 'aberta' AND cr.data_vencimento < CURRENT_DATE
+		 ORDER BY cr.data_vencimento ASC`,
+		empresaID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item InadimplenciaItem
+		var dataVenc time.Time
+		rows.Scan(&item.ID, &item.Cliente, &item.Valor, &dataVenc, &item.DiasAtraso)
+		item.DataVencimento = dataVenc.Format("2006-01-02")
+		rel.Itens = append(rel.Itens, item)
+		rel.TotalVencido += item.Valor
+		rel.Quantidade++
+	}
+
+	return rel, nil
+}
+
+type ProdutoABC struct {
+	ID             int     `json:"id_produto"`
+	Nome           string  `json:"nome"`
+	Faturamento    float64 `json:"faturamento"`
+	Percentual     float64 `json:"percentual"`
+	Acumulado      float64 `json:"percentual_acumulado"`
+	Classificacao  string  `json:"classificacao"`
+}
+
+type RelatorioCurvaABC struct {
+	TotalFaturamento float64      `json:"total_faturamento"`
+	Itens            []ProdutoABC `json:"itens"`
+}
+
+func (s *RelatorioService) CurvaABC(ctx context.Context, empresaID int) (*RelatorioCurvaABC, error) {
+	rel := &RelatorioCurvaABC{Itens: []ProdutoABC{}}
+
+	// 1. Calcular faturamento total nos últimos 90 dias
+	s.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(iv.valor_liquido), 0)
+		 FROM item_venda iv
+		 JOIN venda v ON iv.venda_id = v.id_venda
+		 WHERE v.empresa_id = $1 AND v.status = 'concluida'
+		 AND v.data_venda >= CURRENT_DATE - INTERVAL '90 days'`,
+		empresaID).Scan(&rel.TotalFaturamento)
+
+	if rel.TotalFaturamento == 0 {
+		return rel, nil
+	}
+
+	// 2. Buscar faturamento por produto
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT p.id_produto, p.nome, SUM(iv.valor_liquido) as faturamento
+		 FROM item_venda iv
+		 JOIN produto p ON iv.produto_id = p.id_produto
+		 JOIN venda v ON iv.venda_id = v.id_venda
+		 WHERE v.empresa_id = $1 AND v.status = 'concluida'
+		 AND v.data_venda >= CURRENT_DATE - INTERVAL '90 days'
+		 GROUP BY p.id_produto, p.nome
+		 ORDER BY faturamento DESC`,
+		empresaID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	acumulado := 0.0
+	for rows.Next() {
+		var item ProdutoABC
+		rows.Scan(&item.ID, &item.Nome, &item.Faturamento)
+		
+		item.Percentual = (item.Faturamento / rel.TotalFaturamento) * 100
+		acumulado += item.Percentual
+		item.Acumulado = acumulado
+
+		if acumulado <= 80.5 { // Uma margem pequena para arredondamentos
+			item.Classificacao = "A"
+		} else if acumulado <= 95.5 {
+			item.Classificacao = "B"
+		} else {
+			item.Classificacao = "C"
+		}
+		
+		rel.Itens = append(rel.Itens, item)
+	}
+
+	return rel, nil
+}
+
+type ComissaoOperador struct {
+	UsuarioID     int     `json:"usuario_id"`
+	Nome          string  `json:"nome"`
+	TotalVendas   int     `json:"total_vendas"`
+	ValorTotal    float64 `json:"valor_total"`
+	TicketMedio   float64 `json:"ticket_medio"`
+	Comissao      float64 `json:"comissao"`
+}
+
+type RelatorioComissoes struct {
+	TotalGeral    float64            `json:"total_geral"`
+	TotalComissao float64            `json:"total_comissao"`
+	Operadores    []ComissaoOperador `json:"operadores"`
+}
+
+func (s *RelatorioService) ComissoesOperador(ctx context.Context, empresaID int, mes, ano int) (*RelatorioComissoes, error) {
+	rel := &RelatorioComissoes{Operadores: []ComissaoOperador{}}
+
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT u.id_usuario, u.nome, COUNT(v.id_venda), COALESCE(SUM(v.valor_total), 0)
+		 FROM venda v
+		 JOIN usuario u ON v.usuario_id = u.id_usuario
+		 WHERE v.empresa_id = $1 AND v.status = 'concluida'
+		 AND EXTRACT(MONTH FROM v.data_venda) = $2 AND EXTRACT(YEAR FROM v.data_venda) = $3
+		 GROUP BY u.id_usuario, u.nome
+		 ORDER BY SUM(v.valor_total) DESC`,
+		empresaID, mes, ano)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var c ComissaoOperador
+		rows.Scan(&c.UsuarioID, &c.Nome, &c.TotalVendas, &c.ValorTotal)
+		
+		if c.TotalVendas > 0 {
+			c.TicketMedio = c.ValorTotal / float64(c.TotalVendas)
+		}
+		c.Comissao = c.ValorTotal * 0.01 // 1% fixo
+		
+		rel.Operadores = append(rel.Operadores, c)
+		rel.TotalGeral += c.ValorTotal
+		rel.TotalComissao += c.Comissao
+	}
+
 	return rel, nil
 }
