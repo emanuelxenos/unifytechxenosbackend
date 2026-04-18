@@ -73,6 +73,7 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 		r.Get("/api/clientes", clienteHandler.Listar)
 		r.Post("/api/clientes", clienteHandler.Criar)
 		r.Put("/api/clientes/{id}", clienteHandler.Atualizar)
+		r.Delete("/api/clientes/{id}", clienteHandler.Inativar)
 
 		// Fornecedores (leitura)
 		r.Get("/api/fornecedores", fornecedorHandler.Listar)

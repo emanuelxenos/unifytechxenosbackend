@@ -24,7 +24,8 @@ func NewClienteHandler(db *database.PostgresDB) *ClienteHandler {
 
 func (h *ClienteHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
-	clientes, err := h.clienteService.Listar(r.Context(), claims.EmpresaID)
+	incluirInativos := r.URL.Query().Get("incluir_inativos") == "true"
+	clientes, err := h.clienteService.Listar(r.Context(), claims.EmpresaID, incluirInativos)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -72,3 +73,19 @@ func (h *ClienteHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 	}
 	utils.JSONMessage(w, http.StatusOK, "Cliente atualizado com sucesso")
 }
+
+func (h *ClienteHandler) Inativar(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		utils.Error(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	if err := h.clienteService.Inativar(r.Context(), claims.EmpresaID, id); err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSONMessage(w, http.StatusOK, "Cliente inativado com sucesso")
+}
+

@@ -16,14 +16,20 @@ func NewClienteService(db *database.PostgresDB) *ClienteService {
 	return &ClienteService{db: db}
 }
 
-func (s *ClienteService) Listar(ctx context.Context, empresaID int) ([]models.Cliente, error) {
-	rows, err := s.db.Pool.Query(ctx,
-		`SELECT id_cliente, empresa_id, nome, tipo_pessoa, cpf_cnpj,
-		        telefone, email, limite_credito, saldo_devedor,
-		        data_cadastro, ativo
-		 FROM cliente
-		 WHERE empresa_id = $1 AND ativo = true
-		 ORDER BY nome`, empresaID)
+func (s *ClienteService) Listar(ctx context.Context, empresaID int, incluirInativos bool) ([]models.Cliente, error) {
+	query := `SELECT id_cliente, empresa_id, nome, tipo_pessoa, cpf_cnpj,
+	                 telefone, email, limite_credito, saldo_devedor,
+	                 data_cadastro, ativo
+	          FROM cliente
+	          WHERE empresa_id = $1`
+	if incluirInativos {
+		query += ` AND ativo = false`
+	} else {
+		query += ` AND ativo = true`
+	}
+	query += ` ORDER BY nome`
+
+	rows, err := s.db.Pool.Query(ctx, query, empresaID)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar clientes: %w", err)
 	}
@@ -87,3 +93,16 @@ func (s *ClienteService) Atualizar(ctx context.Context, empresaID, clienteID int
 	}
 	return nil
 }
+
+func (s *ClienteService) Inativar(ctx context.Context, empresaID, clienteID int) error {
+	_, err := s.db.Pool.Exec(ctx,
+		`UPDATE cliente SET ativo = false
+		 WHERE id_cliente = $1 AND empresa_id = $2`,
+		clienteID, empresaID,
+	)
+	if err != nil {
+		return fmt.Errorf("erro ao inativar cliente: %w", err)
+	}
+	return nil
+}
+
