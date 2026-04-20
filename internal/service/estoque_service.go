@@ -183,3 +183,86 @@ func (s *EstoqueService) FinalizarInventario(ctx context.Context, empresaID, inv
 
 	return tx.Commit(ctx)
 }
+
+func (s *EstoqueService) ListarMovimentacoes(ctx context.Context, empresaID int, produtoID int, dataInicio, dataFim string) ([]models.EstoqueMovimentacao, error) {
+	query := `
+		SELECT m.id_movimentacao, m.empresa_id, m.produto_id, m.tipo_movimentacao, 
+		       m.quantidade, m.saldo_anterior, m.saldo_atual, m.origem_tipo, 
+		       m.origem_id, m.data_movimentacao, m.usuario_id, m.observacao, p.nome as produto_nome
+		FROM estoque_movimentacao m
+		JOIN produto p ON m.produto_id = p.id_produto
+		WHERE m.empresa_id = $1
+	`
+	args := []interface{}{empresaID}
+	placeholderID := 2
+
+	if produtoID > 0 {
+		query += fmt.Sprintf(" AND m.produto_id = $%d", placeholderID)
+		args = append(args, produtoID)
+		placeholderID++
+	}
+
+	if dataInicio != "" {
+		query += fmt.Sprintf(" AND m.data_movimentacao >= $%d", placeholderID)
+		args = append(args, dataInicio)
+		placeholderID++
+	}
+
+	if dataFim != "" {
+		query += fmt.Sprintf(" AND m.data_movimentacao <= $%d", placeholderID)
+		args = append(args, dataFim+" 23:59:59")
+		placeholderID++
+	}
+
+	query += " ORDER BY m.data_movimentacao DESC LIMIT 100"
+
+	rows, err := s.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao listar movimentações: %w", err)
+	}
+	defer rows.Close()
+
+	var movs []models.EstoqueMovimentacao
+	for rows.Next() {
+		var m models.EstoqueMovimentacao
+		err := rows.Scan(
+			&m.ID, &m.EmpresaID, &m.ProdutoID, &m.TipoMovimentacao,
+			&m.Quantidade, &m.SaldoAnterior, &m.SaldoAtual, &m.OrigemTipo,
+			&m.OrigemID, &m.DataMovimentacao, &m.UsuarioID, &m.Observacao, &m.ProdutoNome,
+		)
+		if err != nil {
+			continue
+		}
+		movs = append(movs, m)
+	}
+	return movs, nil
+}
+
+func (s *EstoqueService) ListarInventarios(ctx context.Context, empresaID int) ([]models.Inventario, error) {
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT id_inventario, empresa_id, codigo, descricao, data_inicio, 
+		        data_fim, data_fechamento, status, observacoes, usuario_id
+		 FROM inventario
+		 WHERE empresa_id = $1
+		 ORDER BY data_inicio DESC`,
+		empresaID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao listar inventários: %w", err)
+	}
+	defer rows.Close()
+
+	var invs []models.Inventario
+	for rows.Next() {
+		var i models.Inventario
+		err := rows.Scan(
+			&i.ID, &i.EmpresaID, &i.Codigo, &i.Descricao, &i.DataInicio,
+			&i.DataFim, &i.DataFechamento, &i.Status, &i.Observacoes, &i.UsuarioID,
+		)
+		if err != nil {
+			continue
+		}
+		invs = append(invs, i)
+	}
+	return invs, nil
+}

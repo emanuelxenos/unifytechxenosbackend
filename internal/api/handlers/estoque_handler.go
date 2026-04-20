@@ -83,3 +83,28 @@ func (h *EstoqueHandler) FinalizarInventario(w http.ResponseWriter, r *http.Requ
 	}
 	utils.JSONMessage(w, http.StatusOK, "Inventário finalizado com sucesso")
 }
+
+func (h *EstoqueHandler) ListarMovimentacoes(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	
+	produtoID, _ := strconv.Atoi(r.URL.Query().Get("produto_id"))
+	dataInicio := r.URL.Query().Get("data_inicio")
+	dataFim := r.URL.Query().Get("data_fim")
+
+	movs, err := h.estoqueService.ListarMovimentacoes(r.Context(), claims.EmpresaID, produtoID, dataInicio, dataFim)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, movs)
+}
+
+func (h *EstoqueHandler) ListarInventarios(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	invs, err := h.estoqueService.ListarInventarios(r.Context(), claims.EmpresaID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, invs)
+}
