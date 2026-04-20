@@ -7,11 +7,24 @@ import (
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// PgxPoolIface define o conjunto de métodos que usamos do pgxpool.Pool
+// Isso permite que possamos fazer mock do banco em testes unitários.
+type PgxPoolIface interface {
+	Begin(context.Context) (pgx.Tx, error)
+	Close()
+	Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...interface{}) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...interface{}) pgx.Row
+	Ping(context.Context) error
+}
+
 type PostgresDB struct {
-	Pool *pgxpool.Pool
+	Pool PgxPoolIface
 }
 
 func NewPostgresDB(databaseURL string) (*PostgresDB, error) {

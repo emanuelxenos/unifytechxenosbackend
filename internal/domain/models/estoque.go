@@ -46,6 +46,7 @@ type InventarioItem struct {
 	Diferenca          *float64   `json:"diferenca,omitempty" db:"diferenca"`
 	Contado            bool       `json:"contado" db:"contado"`
 	DataContagem       *time.Time `json:"data_contagem,omitempty" db:"data_contagem"`
+	UsuarioContagemID  *int       `json:"usuario_contagem_id,omitempty" db:"usuario_contagem_id"`
 	Observacao         *string    `json:"observacao,omitempty" db:"observacao"`
 
 	// Join
@@ -60,13 +61,15 @@ type AjusteEstoqueRequest struct {
 }
 
 type CriarInventarioRequest struct {
-	Codigo    string `json:"codigo"`
-	Descricao string `json:"descricao"`
-	DataInicio string `json:"data_inicio"`
+	Codigo      string `json:"codigo"`
+	Descricao   string `json:"descricao"`
+	DataInicio  string `json:"data_inicio"`
+	CategoriaID *int   `json:"categoria_id,omitempty"`
 }
 
 type FinalizarInventarioRequest struct {
 	Ajustes         []AjusteInventarioRequest `json:"ajustes"`
+	Observacoes     string                    `json:"observacoes"`
 	SupervisorSenha string                    `json:"supervisor_senha"`
 }
 

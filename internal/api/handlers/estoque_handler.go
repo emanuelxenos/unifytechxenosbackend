@@ -108,3 +108,40 @@ func (h *EstoqueHandler) ListarInventarios(w http.ResponseWriter, r *http.Reques
 	}
 	utils.JSON(w, http.StatusOK, invs)
 }
+
+func (h *EstoqueHandler) BuscarInventarioPorId(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		utils.Error(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	inv, err := h.estoqueService.BuscarInventarioPorId(r.Context(), claims.EmpresaID, id)
+	if err != nil {
+		utils.Error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, inv)
+}
+
+func (h *EstoqueHandler) AtualizarItemInventario(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	invID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	prodID, _ := strconv.Atoi(chi.URLParam(r, "prodId"))
+
+	var req struct {
+		Quantidade float64 `json:"quantidade"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.Error(w, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	err := h.estoqueService.AtualizarItemInventario(r.Context(), claims.EmpresaID, invID, prodID, req.Quantidade, claims.UserID)
+	if err != nil {
+		utils.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSONMessage(w, http.StatusOK, "Item atualizado com sucesso")
+}
