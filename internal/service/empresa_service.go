@@ -85,3 +85,14 @@ func (s *EmpresaService) Atualizar(ctx context.Context, e *models.Empresa) error
 	}
 	return nil
 }
+
+func (s *EmpresaService) UpdateLogoURL(ctx context.Context, id int, url string) error {
+	_, err := s.db.Pool.Exec(ctx,
+		"UPDATE empresa SET logotipo_url = $1, data_atualizacao = $2 WHERE id_empresa = $3",
+		url, time.Now(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("erro ao atualizar logo da empresa: %w", err)
+	}
+	return nil
+}

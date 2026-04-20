@@ -1,6 +1,10 @@
 package api
 
 import (
+	"net/http"
+	"os"
+	"path/filepath"
+
 	"github.com/go-chi/chi/v5"
 
 	"erp-backend/internal/api/handlers"
@@ -146,6 +150,7 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 			r.Put("/api/config", configHandler.Atualizar)
 			r.Get("/api/empresa", empresaHandler.Buscar)
 			r.Put("/api/empresa", empresaHandler.Atualizar)
+			r.Post("/api/empresa/logo", empresaHandler.UploadLogo)
 			r.Get("/api/usuarios", usuarioHandler.Listar)
 			r.Post("/api/usuarios", usuarioHandler.Criar)
 			r.Put("/api/usuarios/{id}", usuarioHandler.Atualizar)
@@ -156,6 +161,11 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 			r.Post("/api/backup/restaurar", configHandler.Restaurar)
 		})
 	})
+
+	// Servir arquivos estáticos (uploads)
+	workDir, _ := os.Getwd()
+	filesDir := http.Dir(filepath.Join(workDir, "uploads"))
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(filesDir)))
 
 	return r
 }
