@@ -46,10 +46,19 @@ func (s *CompraService) Criar(ctx context.Context, empresaID, usuarioID int, req
 
 	for i, item := range req.Itens {
 		vt := item.Quantidade * item.PrecoUnitario
+		
+		var vcto *time.Time
+		if item.DataVencimento != "" {
+			parsed, err := time.Parse("2006-01-02", item.DataVencimento)
+			if err == nil {
+				vcto = &parsed
+			}
+		}
+
 		_, err = tx.Exec(ctx,
-			`INSERT INTO item_compra (compra_id, produto_id, sequencia, quantidade, preco_unitario, valor_total)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			compra.ID, item.ProdutoID, i+1, item.Quantidade, item.PrecoUnitario, vt,
+			`INSERT INTO item_compra (compra_id, produto_id, sequencia, quantidade, preco_unitario, valor_total, localizacao, data_vencimento)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			compra.ID, item.ProdutoID, i+1, item.Quantidade, item.PrecoUnitario, vt, item.Localizacao, vcto,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("erro ao inserir item: %w", err)
@@ -102,6 +111,18 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 	}
 
 	for _, item := range itens {
+		// Buscar dados do item da compra (localizacao e vencimento)
+		var localizacao *string
+		var dataVencimento *time.Time
+		err = tx.QueryRow(ctx, 
+			`SELECT localizacao, data_vencimento FROM item_compra 
+			 WHERE compra_id = $1 AND produto_id = $2`, 
+			compraID, item.ProdutoID).Scan(&localizacao, &dataVencimento)
+		if err != nil {
+			// Se não encontrar dados específicos, apenas continua
+			log.Printf("⚠️ Dados de varejo não encontrados para o item %d na compra %d", item.ProdutoID, compraID)
+		}
+
 		_, err = tx.Exec(ctx,
 			`UPDATE item_compra SET quantidade_recebida = $1, data_recebimento = CURRENT_TIMESTAMP
 			 WHERE compra_id = $2 AND produto_id = $3`,
@@ -116,9 +137,16 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 		tx.QueryRow(ctx, `SELECT estoque_atual FROM produto WHERE id_produto = $1`, item.ProdutoID).Scan(&saldoAtual)
 
 		novoSaldo := saldoAtual + item.QuantidadeRecebida
+		
+		// Atualizar produto com novos dados de varejo
 		_, _ = tx.Exec(ctx,
-			`UPDATE produto SET estoque_atual = $1, data_ultima_compra = CURRENT_DATE WHERE id_produto = $2`,
-			novoSaldo, item.ProdutoID,
+			`UPDATE produto 
+			 SET estoque_atual = $1, 
+			     data_ultima_compra = CURRENT_DATE,
+				 localizacao = COALESCE($2, localizacao),
+				 data_vencimento = COALESCE($3, data_vencimento)
+			 WHERE id_produto = $4`,
+			novoSaldo, localizacao, dataVencimento, item.ProdutoID,
 		)
 
 		_, _ = tx.Exec(ctx,
@@ -224,7 +252,7 @@ func (s *CompraService) BuscarPorID(ctx context.Context, empresaID, id int) (*mo
 	rows, err := s.db.Pool.Query(ctx,
 		`SELECT ic.id_item_compra, ic.compra_id, ic.produto_id, ic.sequencia, ic.quantidade,
 		        ic.quantidade_recebida, ic.preco_unitario, ic.valor_total, ic.valor_desconto,
-		        ic.data_recebimento, p.nome as produto_nome
+		        ic.data_recebimento, ic.localizacao, ic.data_vencimento, p.nome as produto_nome
 		 FROM item_compra ic
 		 LEFT JOIN produto p ON ic.produto_id = p.id_produto
 		 WHERE ic.compra_id = $1`, id)
@@ -238,7 +266,7 @@ func (s *CompraService) BuscarPorID(ctx context.Context, empresaID, id int) (*mo
 		err := rows.Scan(
 			&i.ID, &i.CompraID, &i.ProdutoID, &i.Sequencia, &i.Quantidade,
 			&i.QuantidadeRecebida, &i.PrecoUnitario, &i.ValorTotal, &i.ValorDesconto,
-			&i.DataRecebimento, &i.ProdutoNome,
+			&i.DataRecebimento, &i.Localizacao, &i.DataVencimento, &i.ProdutoNome,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("erro ao ler linha de item: %w", err)

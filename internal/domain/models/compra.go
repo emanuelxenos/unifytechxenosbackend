@@ -40,6 +40,8 @@ type ItemCompra struct {
 	ValorTotal         float64    `json:"valor_total" db:"valor_total"`
 	ValorDesconto      float64    `json:"valor_desconto" db:"valor_desconto"`
 	DataRecebimento    *time.Time `json:"data_recebimento,omitempty" db:"data_recebimento"`
+	Localizacao        *string    `json:"localizacao,omitempty" db:"localizacao"`
+	DataVencimento     *time.Time `json:"data_vencimento,omitempty" db:"data_vencimento"`
 
 	// Join
 	ProdutoNome *string `json:"produto_nome,omitempty" db:"produto_nome"`
@@ -56,6 +58,8 @@ type CriarItemCompraRequest struct {
 	ProdutoID     int     `json:"produto_id"`
 	Quantidade    float64 `json:"quantidade"`
 	PrecoUnitario float64 `json:"preco_unitario"`
+	Localizacao   string  `json:"localizacao,omitempty"`
+	DataVencimento string `json:"data_vencimento,omitempty"`
 }
 
 type ReceberCompraRequest struct {
