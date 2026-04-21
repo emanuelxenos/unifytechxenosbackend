@@ -377,15 +377,31 @@ func (s *EstoqueService) ListarMovimentacoes(ctx context.Context, empresaID int,
 	return movs, nil
 }
 
-func (s *EstoqueService) ListarInventarios(ctx context.Context, empresaID int) ([]models.Inventario, error) {
-	rows, err := s.db.Pool.Query(ctx,
-		`SELECT id_inventario, empresa_id, codigo, descricao, data_inicio, 
+func (s *EstoqueService) ListarInventarios(ctx context.Context, empresaID int, dataInicio, dataFim string) ([]models.Inventario, error) {
+	query := `
+		SELECT id_inventario, empresa_id, codigo, descricao, data_inicio, 
 		        data_fim, data_fechamento, status, observacoes, usuario_id
 		 FROM inventario
 		 WHERE empresa_id = $1
-		 ORDER BY data_inicio DESC`,
-		empresaID,
-	)
+	`
+	args := []interface{}{empresaID}
+	placeholderID := 2
+
+	if dataInicio != "" {
+		query += fmt.Sprintf(" AND data_inicio >= $%d", placeholderID)
+		args = append(args, dataInicio)
+		placeholderID++
+	}
+
+	if dataFim != "" {
+		query += fmt.Sprintf(" AND data_inicio <= $%d", placeholderID)
+		args = append(args, dataFim+" 23:59:59")
+		placeholderID++
+	}
+
+	query += " ORDER BY data_inicio DESC, id_inventario DESC LIMIT 50"
+
+	rows, err := s.db.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao listar inventários: %w", err)
 	}

@@ -101,7 +101,11 @@ func (h *EstoqueHandler) ListarMovimentacoes(w http.ResponseWriter, r *http.Requ
 
 func (h *EstoqueHandler) ListarInventarios(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
-	invs, err := h.estoqueService.ListarInventarios(r.Context(), claims.EmpresaID)
+	
+	dataInicio := r.URL.Query().Get("inicio")
+	dataFim := r.URL.Query().Get("fim")
+
+	invs, err := h.estoqueService.ListarInventarios(r.Context(), claims.EmpresaID, dataInicio, dataFim)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return
