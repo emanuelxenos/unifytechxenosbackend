@@ -28,13 +28,15 @@ func (h *ProdutoHandler) Listar(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	search := r.URL.Query().Get("search")
 	catStr := r.URL.Query().Get("categoria_id")
+	baixoEstoque, _ := strconv.ParseBool(r.URL.Query().Get("baixo_estoque"))
+	vencendo, _ := strconv.ParseBool(r.URL.Query().Get("vencendo"))
 	var catID *int
 	if catStr != "" {
 		id, _ := strconv.Atoi(catStr)
 		catID = &id
 	}
 
-	produtos, total, err := h.produtoService.Listar(r.Context(), claims.EmpresaID, page, limit, catID, search)
+	produtos, total, err := h.produtoService.Listar(r.Context(), claims.EmpresaID, page, limit, catID, search, baixoEstoque, vencendo)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return

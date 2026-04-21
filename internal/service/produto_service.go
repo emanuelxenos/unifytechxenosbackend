@@ -16,7 +16,7 @@ func NewProdutoService(db *database.PostgresDB) *ProdutoService {
 	return &ProdutoService{db: db}
 }
 
-func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int, categoriaID *int, search string) ([]models.Produto, int, error) {
+func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int, categoriaID *int, search string, apenasBaixoEstoque, apenasVencendo bool) ([]models.Produto, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -40,6 +40,14 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 		countQuery += fmt.Sprintf(` AND (nome ILIKE $%d OR codigo_barras ILIKE $%d)`, argIdx, argIdx)
 		args = append(args, "%"+search+"%")
 		argIdx++
+	}
+
+	if apenasBaixoEstoque {
+		countQuery += ` AND controlar_estoque = true AND estoque_atual <= estoque_minimo`
+	}
+
+	if apenasVencendo {
+		countQuery += ` AND data_vencimento IS NOT NULL AND data_vencimento <= CURRENT_DATE + INTERVAL '15 days'`
 	}
 
 	var total int
@@ -74,6 +82,14 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 		qArgIdx++
 	}
 
+	if apenasBaixoEstoque {
+		query += ` AND p.controlar_estoque = true AND p.estoque_atual <= p.estoque_minimo`
+	}
+
+	if apenasVencendo {
+		query += ` AND p.data_vencimento IS NOT NULL AND p.data_vencimento <= CURRENT_DATE + INTERVAL '15 days'`
+	}
+
 	query += fmt.Sprintf(` ORDER BY p.nome LIMIT $%d OFFSET $%d`, qArgIdx, qArgIdx+1)
 	queryArgs = append(queryArgs, limit, offset)
 
@@ -83,7 +99,7 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 	}
 	defer rows.Close()
 
-	var produtos []models.Produto
+	var produtos = []models.Produto{}
 	for rows.Next() {
 		var p models.Produto
 		err := rows.Scan(
