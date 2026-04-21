@@ -168,10 +168,12 @@ func (s *RelatorioService) MaisVendidos(ctx context.Context, empresaID int, peri
 }
 
 type RelatorioEstoque struct {
-	TotalProdutos   int     `json:"total_produtos"`
-	ValorTotalCusto float64 `json:"valor_total_custo"`
-	ValorTotalVenda float64 `json:"valor_total_venda"`
-	ProdutosBaixos  int     `json:"produtos_baixo_estoque"`
+	TotalProdutos      int     `json:"total_produtos"`
+	ValorTotalCusto    float64 `json:"valor_total_custo"`
+	ValorTotalVenda    float64 `json:"valor_total_venda"`
+	ProdutosBaixos     int     `json:"produtos_baixo_estoque"`
+	SugestaoCompraTotal float64 `json:"sugestao_compra_total"`
+	ProdutosVencendo   int     `json:"produtos_vencendo"`
 }
 
 func (s *RelatorioService) EstoqueResumo(ctx context.Context, empresaID int) (*RelatorioEstoque, error) {
@@ -181,9 +183,11 @@ func (s *RelatorioService) EstoqueResumo(ctx context.Context, empresaID int) (*R
 			COUNT(id_produto),
 			COALESCE(SUM(estoque_atual * preco_custo), 0),
 			COALESCE(SUM(estoque_atual * preco_venda), 0),
-			COUNT(CASE WHEN estoque_atual <= estoque_minimo AND controlar_estoque = TRUE THEN 1 END)
+			COUNT(CASE WHEN estoque_atual <= estoque_minimo AND controlar_estoque = TRUE THEN 1 END),
+			COALESCE(SUM(CASE WHEN estoque_atual < estoque_minimo THEN (estoque_minimo - estoque_atual) * preco_custo ELSE 0 END), 0),
+			COUNT(CASE WHEN data_vencimento <= CURRENT_DATE + INTERVAL '15 days' THEN 1 END)
 		 FROM produto WHERE empresa_id = $1 AND ativo = TRUE`,
-		empresaID).Scan(&rel.TotalProdutos, &rel.ValorTotalCusto, &rel.ValorTotalVenda, &rel.ProdutosBaixos)
+		empresaID).Scan(&rel.TotalProdutos, &rel.ValorTotalCusto, &rel.ValorTotalVenda, &rel.ProdutosBaixos, &rel.SugestaoCompraTotal, &rel.ProdutosVencendo)
 	return rel, err
 }
 

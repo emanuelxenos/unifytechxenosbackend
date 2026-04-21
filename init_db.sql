@@ -203,6 +203,8 @@ CREATE TABLE IF NOT EXISTS produto (
     foto_principal_url VARCHAR(500),
     ativo BOOLEAN DEFAULT TRUE,
     destacado BOOLEAN DEFAULT FALSE,
+    localizacao VARCHAR(100),
+    data_vencimento DATE,
     observacoes TEXT
 );
 

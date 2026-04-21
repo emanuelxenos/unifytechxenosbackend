@@ -53,7 +53,7 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 	                 p.nome, p.descricao, p.unidade_venda, p.estoque_atual,
 	                 p.estoque_minimo, p.controlar_estoque, p.preco_custo,
 	                 p.preco_venda, p.preco_promocional, p.ativo, p.destacado,
-	                 p.data_cadastro, p.data_ultima_venda,
+	                 p.data_cadastro, p.data_ultima_venda, p.localizacao, p.data_vencimento,
 	                 c.nome as categoria_nome
 	          FROM produto p
 	          LEFT JOIN categoria c ON p.categoria_id = c.id_categoria
@@ -91,7 +91,7 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 			&p.Nome, &p.Descricao, &p.UnidadeVenda, &p.EstoqueAtual,
 			&p.EstoqueMinimo, &p.ControlarEstoque, &p.PrecoCusto,
 			&p.PrecoVenda, &p.PrecoPromocional, &p.Ativo, &p.Destacado,
-			&p.DataCadastro, &p.DataUltimaVenda,
+			&p.DataCadastro, &p.DataUltimaVenda, &p.Localizacao, &p.DataVencimento,
 			&p.CategoriaNome,
 		)
 		if err != nil {
@@ -144,7 +144,7 @@ func (s *ProdutoService) BuscarPorID(ctx context.Context, empresaID, produtoID i
 		        p.unidade_venda, p.estoque_atual, p.estoque_minimo,
 		        p.controlar_estoque, p.preco_custo, p.preco_venda,
 		        p.preco_promocional, p.ativo, p.destacado, p.data_cadastro,
-		        p.data_ultima_compra, p.data_ultima_venda,
+		        p.data_ultima_compra, p.data_ultima_venda, p.localizacao, p.data_vencimento,
 		        c.nome as categoria_nome
 		 FROM produto p
 		 LEFT JOIN categoria c ON p.categoria_id = c.id_categoria
@@ -156,7 +156,7 @@ func (s *ProdutoService) BuscarPorID(ctx context.Context, empresaID, produtoID i
 		&p.UnidadeVenda, &p.EstoqueAtual, &p.EstoqueMinimo,
 		&p.ControlarEstoque, &p.PrecoCusto, &p.PrecoVenda,
 		&p.PrecoPromocional, &p.Ativo, &p.Destacado, &p.DataCadastro,
-		&p.DataUltimaCompra, &p.DataUltimaVenda,
+		&p.DataUltimaCompra, &p.DataUltimaVenda, &p.Localizacao, &p.DataVencimento,
 		&p.CategoriaNome,
 	)
 	if err != nil {
@@ -175,12 +175,14 @@ func (s *ProdutoService) Criar(ctx context.Context, empresaID int, req models.Cr
 	err := s.db.Pool.QueryRow(ctx,
 		`INSERT INTO produto (empresa_id, codigo_barras, codigo_interno, nome, descricao,
 		                      categoria_id, unidade_venda, controlar_estoque,
-		                      estoque_minimo, preco_custo, preco_venda, marca)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		                      estoque_minimo, preco_custo, preco_venda, marca,
+		                      localizacao, data_vencimento)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		 RETURNING id_produto, data_cadastro, ativo`,
 		empresaID, req.CodigoBarras, req.CodigoInterno, req.Nome, req.Descricao,
 		req.CategoriaID, unidade, req.ControlarEstoque,
 		req.EstoqueMinimo, req.PrecoCusto, req.PrecoVenda, req.Marca,
+		req.Localizacao, req.DataVencimento,
 	).Scan(&p.ID, &p.DataCadastro, &p.Ativo)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar produto: %w", err)
@@ -208,11 +210,14 @@ func (s *ProdutoService) Atualizar(ctx context.Context, empresaID, produtoID int
 		    estoque_minimo = $7,
 		    preco_custo = $8,
 		    preco_venda = $9,
-		    marca = $10
-		 WHERE id_produto = $11 AND empresa_id = $12`,
+		    marca = $10,
+		    localizacao = $11,
+		    data_vencimento = $12
+		 WHERE id_produto = $13 AND empresa_id = $14`,
 		req.CodigoBarras, req.Nome, req.Descricao, req.CategoriaID,
 		req.UnidadeVenda, req.ControlarEstoque, req.EstoqueMinimo,
 		req.PrecoCusto, req.PrecoVenda, req.Marca,
+		req.Localizacao, req.DataVencimento,
 		produtoID, empresaID,
 	)
 	if err != nil {

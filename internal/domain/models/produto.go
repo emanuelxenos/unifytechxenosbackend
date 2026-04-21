@@ -34,6 +34,8 @@ type Produto struct {
 	FotoPrincipalURL  *string    `json:"foto_principal_url,omitempty" db:"foto_principal_url"`
 	Ativo             bool       `json:"ativo" db:"ativo"`
 	Destacado         bool       `json:"destacado" db:"destacado"`
+	Localizacao       *string    `json:"localizacao,omitempty" db:"localizacao"`
+	DataVencimento    *time.Time `json:"data_vencimento,omitempty" db:"data_vencimento"`
 
 	// Campos calculados / joins
 	CategoriaNome *string `json:"categoria_nome,omitempty" db:"categoria_nome"`
@@ -50,7 +52,9 @@ type CriarProdutoRequest struct {
 	EstoqueMinimo    float64  `json:"estoque_minimo"`
 	PrecoCusto       float64  `json:"preco_custo"`
 	PrecoVenda       float64  `json:"preco_venda"`
-	Marca            *string  `json:"marca,omitempty"`
+	Marca            *string    `json:"marca,omitempty"`
+	Localizacao      *string    `json:"localizacao,omitempty"`
+	DataVencimento   *time.Time `json:"data_vencimento,omitempty"`
 }
 
 type ProdutoBuscaResponse struct {
