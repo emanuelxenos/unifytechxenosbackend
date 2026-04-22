@@ -186,6 +186,14 @@ type PerformanceProduto struct {
 	Saida   float64 `json:"saida"`
 }
 
+type AuditoriaMovimentacao struct {
+	Data       time.Time `json:"data"`
+	Usuario    string    `json:"usuario"`
+	Tipo       string    `json:"tipo"`
+	Quantidade float64   `json:"quantidade"`
+	Observacao string    `json:"observacao"`
+}
+
 func (s *RelatorioService) EstoqueResumo(ctx context.Context, empresaID int) (*RelatorioEstoque, error) {
 	rel := &RelatorioEstoque{}
 	err := s.db.Pool.QueryRow(ctx,
@@ -557,4 +565,34 @@ func (s *RelatorioService) ComissoesOperador(ctx context.Context, empresaID int,
 	}
 
 	return rel, nil
+}
+
+func (s *RelatorioService) AuditoriaMovimentacao(ctx context.Context, empresaID, produtoID int) ([]AuditoriaMovimentacao, error) {
+	rows, err := s.db.Pool.Query(ctx, `
+		SELECT 
+			em.data_movimentacao,
+			COALESCE(u.nome, 'Sistema'),
+			em.tipo_movimentacao,
+			em.quantidade,
+			COALESCE(em.observacao, '')
+		FROM estoque_movimentacao em
+		LEFT JOIN usuario u ON em.usuario_id = u.id_usuario
+		WHERE em.empresa_id = $1 AND em.produto_id = $2
+		ORDER BY em.data_movimentacao DESC
+		LIMIT 50
+	`, empresaID, produtoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []AuditoriaMovimentacao
+	for rows.Next() {
+		var a AuditoriaMovimentacao
+		if err := rows.Scan(&a.Data, &a.Usuario, &a.Tipo, &a.Quantidade, &a.Observacao); err != nil {
+			return nil, err
+		}
+		list = append(list, a)
+	}
+	return list, nil
 }

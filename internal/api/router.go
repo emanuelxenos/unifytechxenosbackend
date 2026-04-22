@@ -148,6 +148,7 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 			r.Get("/api/relatorios/etiquetas", relatorioHandler.Etiquetas)
 			r.Get("/api/relatorios/sugestao-compra", relatorioHandler.SugestaoCompra)
 			r.Get("/api/relatorios/performance-produto", relatorioHandler.PerformanceProduto)
+			r.Get("/api/relatorios/auditoria-estoque", relatorioHandler.AuditoriaMovimentacao)
 		})
 
 		// Admin (configurações, usuários, backup)

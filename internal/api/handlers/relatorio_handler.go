@@ -598,3 +598,21 @@ func (h *RelatorioHandler) PerformanceProduto(w http.ResponseWriter, r *http.Req
 
 	utils.JSON(w, http.StatusOK, data)
 }
+
+func (h *RelatorioHandler) AuditoriaMovimentacao(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	produtoID, _ := strconv.Atoi(r.URL.Query().Get("id"))
+
+	if produtoID == 0 {
+		utils.Error(w, http.StatusBadRequest, "ID do produto é obrigatório")
+		return
+	}
+
+	data, err := h.relatorioService.AuditoriaMovimentacao(r.Context(), claims.EmpresaID, produtoID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.JSON(w, http.StatusOK, data)
+}
