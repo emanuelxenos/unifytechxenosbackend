@@ -90,8 +90,9 @@ func (h *EstoqueHandler) ListarMovimentacoes(w http.ResponseWriter, r *http.Requ
 	produtoID, _ := strconv.Atoi(r.URL.Query().Get("produto_id"))
 	dataInicio := r.URL.Query().Get("data_inicio")
 	dataFim := r.URL.Query().Get("data_fim")
+	tipo := r.URL.Query().Get("tipo")
 
-	movs, err := h.estoqueService.ListarMovimentacoes(r.Context(), claims.EmpresaID, produtoID, dataInicio, dataFim)
+	movs, err := h.estoqueService.ListarMovimentacoes(r.Context(), claims.EmpresaID, produtoID, dataInicio, dataFim, tipo)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return

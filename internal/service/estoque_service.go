@@ -323,7 +323,7 @@ func (s *EstoqueService) AtualizarItemInventario(ctx context.Context, empresaID,
 	return err
 }
 
-func (s *EstoqueService) ListarMovimentacoes(ctx context.Context, empresaID int, produtoID int, dataInicio, dataFim string) ([]models.EstoqueMovimentacao, error) {
+func (s *EstoqueService) ListarMovimentacoes(ctx context.Context, empresaID int, produtoID int, dataInicio, dataFim, tipo string) ([]models.EstoqueMovimentacao, error) {
 	query := `
 		SELECT m.id_movimentacao, m.empresa_id, m.produto_id, m.tipo_movimentacao, 
 		       m.quantidade, m.saldo_anterior, m.saldo_atual, m.origem_tipo, 
@@ -338,6 +338,12 @@ func (s *EstoqueService) ListarMovimentacoes(ctx context.Context, empresaID int,
 	if produtoID > 0 {
 		query += fmt.Sprintf(" AND m.produto_id = $%d", placeholderID)
 		args = append(args, produtoID)
+		placeholderID++
+	}
+
+	if tipo != "" {
+		query += fmt.Sprintf(" AND m.tipo_movimentacao = $%d", placeholderID)
+		args = append(args, tipo)
 		placeholderID++
 	}
 

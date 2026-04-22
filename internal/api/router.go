@@ -144,6 +144,8 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 			r.Get("/api/relatorios/comissoes", relatorioHandler.RelatorioComissoes)
 			r.Get("/api/relatorios/exportar/pdf", relatorioHandler.ExportarPDF)
 			r.Get("/api/relatorios/exportar/excel", relatorioHandler.ExportarExcel)
+			r.Get("/api/relatorios/etiqueta", relatorioHandler.Etiqueta)
+			r.Get("/api/relatorios/sugestao-compra", relatorioHandler.SugestaoCompra)
 		})
 
 		// Admin (configurações, usuários, backup)

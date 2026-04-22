@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"erp-backend/internal/api/middleware"
@@ -190,6 +191,9 @@ func (h *RelatorioHandler) ExportarPDF(w http.ResponseWriter, r *http.Request) {
 	case "estoque": 
 		titulo = "RELATORIO DE ESTOQUE E PATRIMONIO"
 		subtitulo = "Posicao atual consolidada em: " + dataAtual
+	case "estoque_lista":
+		titulo = "LISTAGEM DETALHADA DE ESTOQUE"
+		subtitulo = "Relatorio gerado em: " + dataAtual
 	case "financeiro": 
 		titulo = "RESUMO FINANCEIRO"
 		subtitulo = "Fotografia de saldo aberto e movimento de caixa em: " + dataAtual
@@ -235,6 +239,8 @@ func (h *RelatorioHandler) ExportarPDF(w http.ResponseWriter, r *http.Request) {
 		pdf.CellFormat(100, 12, "  "+value, "1", 1, "L", true, 0, "")
 	}
 
+	tr := pdf.UnicodeTranslatorFromDescriptor("")
+
 	if tipo == "estoque" {
 		rel, err := h.relatorioService.EstoqueResumo(r.Context(), claims.EmpresaID)
 		if err != nil {
@@ -242,11 +248,38 @@ func (h *RelatorioHandler) ExportarPDF(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		pdf.Ln(5)
-		drawRow("Total de Produtos Registrados", fmt.Sprintf("%d itens cadastrados", rel.TotalProdutos))
-		drawRow("Alerta de Estoque Baixo", fmt.Sprintf("%d produtos", rel.ProdutosBaixos))
-		drawRow("Valor Estimado (Custo)", fmt.Sprintf("R$ %.2f", rel.ValorTotalCusto))
-		drawRow("Valor Estimado (Venda)", fmt.Sprintf("R$ %.2f", rel.ValorTotalVenda))
+		drawRow(tr("Total de Produtos Registrados"), tr(fmt.Sprintf("%d itens cadastrados", rel.TotalProdutos)))
+		drawRow(tr("Alerta de Estoque Baixo"), tr(fmt.Sprintf("%d produtos", rel.ProdutosBaixos)))
+		drawRow(tr("Valor Estimado (Custo)"), tr(fmt.Sprintf("R$ %.2f", rel.ValorTotalCusto)))
+		drawRow(tr("Valor Estimado (Venda)"), tr(fmt.Sprintf("R$ %.2f", rel.ValorTotalVenda)))
 		
+	} else if tipo == "estoque_lista" {
+		search := r.URL.Query().Get("search")
+		catID, _ := strconv.Atoi(r.URL.Query().Get("categoria_id"))
+		baixoEstoque := r.URL.Query().Get("baixo_estoque") == "true"
+		vencendo := r.URL.Query().Get("vencendo") == "true"
+
+		produtos, err := h.relatorioService.ListaEstoque(r.Context(), claims.EmpresaID, search, catID, baixoEstoque, vencendo)
+		if err != nil {
+			utils.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		// Cabeçalho da Tabela
+		pdf.SetFont("Arial", "B", 10)
+		pdf.SetFillColor(240, 240, 240)
+		pdf.CellFormat(80, 10, tr("Produto"), "1", 0, "L", true, 0, "")
+		pdf.CellFormat(40, 10, tr("Categoria"), "1", 0, "L", true, 0, "")
+		pdf.CellFormat(30, 10, tr("Qtd"), "1", 0, "C", true, 0, "")
+		pdf.CellFormat(40, 10, tr("Preço Venda"), "1", 1, "R", true, 0, "")
+
+		pdf.SetFont("Arial", "", 9)
+		for _, p := range produtos {
+			pdf.CellFormat(80, 8, " "+tr(p.Nome), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(40, 8, " "+tr(p.Categoria), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(30, 8, fmt.Sprintf("%.2f", p.EstoqueAtual), "1", 0, "C", false, 0, "")
+			pdf.CellFormat(40, 8, fmt.Sprintf("R$ %.2f ", p.PrecoVenda), "1", 1, "R", false, 0, "")
+		}
 	} else if tipo == "financeiro" {
 		rel, err := h.relatorioService.FinanceiroResumo(r.Context(), claims.EmpresaID)
 		if err != nil {
@@ -318,6 +351,70 @@ func (h *RelatorioHandler) ExportarPDF(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *RelatorioHandler) Etiqueta(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	produtoID, _ := strconv.Atoi(r.URL.Query().Get("id"))
+	if produtoID == 0 {
+		utils.Error(w, http.StatusBadRequest, "ID do produto é obrigatório")
+		return
+	}
+
+	// Buscar produto (usando ProdutoService se disponível ou query direta)
+	// Para agilizar, farei query direta
+	var nome string
+	var preco float64
+	err := h.relatorioService.GetDB().Pool.QueryRow(r.Context(),
+		`SELECT nome, preco_venda FROM produto WHERE id_produto = $1 AND empresa_id = $2`,
+		produtoID, claims.EmpresaID).Scan(&nome, &preco)
+	
+	if err != nil {
+		utils.Error(w, http.StatusNotFound, "Produto não encontrado")
+		return
+	}
+
+	// Tamanho de etiqueta comum: 40x25mm
+	pdf := gofpdf.NewCustom(&gofpdf.InitType{
+		UnitStr: "mm",
+		Size:    gofpdf.SizeType{Wd: 40, Ht: 25},
+	})
+	tr := pdf.UnicodeTranslatorFromDescriptor("")
+	pdf.SetMargins(2, 2, 2)
+	pdf.AddPage()
+
+	// Nome do Produto
+	pdf.SetFont("Arial", "B", 7)
+	pdf.MultiCell(36, 4, tr(nome), "", "C", false)
+	
+	// Divisor
+	pdf.SetDrawColor(200, 200, 200)
+	pdf.Line(5, 12, 35, 12)
+
+	// Preço
+	pdf.SetY(14)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.CellFormat(36, 6, fmt.Sprintf("R$ %.2f", preco), "", 1, "C", false, 0, "")
+
+	// Rodapé UniTech
+	pdf.SetY(20)
+	pdf.SetFont("Arial", "I", 5)
+	pdf.SetTextColor(150, 150, 150)
+	pdf.CellFormat(36, 3, "UniTech Xenos ERP", "", 1, "C", false, 0, "")
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", "inline; filename=etiqueta.pdf")
+	pdf.Output(w)
+}
+
+func (h *RelatorioHandler) SugestaoCompra(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	list, err := h.relatorioService.SugestaoCompra(r.Context(), claims.EmpresaID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, list)
+}
+
 func (h *RelatorioHandler) ExportarExcel(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
 	tipo := r.URL.Query().Get("tipo")
@@ -342,6 +439,31 @@ func (h *RelatorioHandler) ExportarExcel(w http.ResponseWriter, r *http.Request)
 		f.SetCellValue("Sheet1", "B3", rel.ProdutosBaixos)
 		f.SetCellValue("Sheet1", "A4", "Valor Total (Custo):")
 		f.SetCellValue("Sheet1", "B4", rel.ValorTotalCusto)
+	} else if tipo == "estoque_lista" {
+		search := r.URL.Query().Get("search")
+		catID, _ := strconv.Atoi(r.URL.Query().Get("categoria_id"))
+		baixoEstoque := r.URL.Query().Get("baixo_estoque") == "true"
+		vencendo := r.URL.Query().Get("vencendo") == "true"
+
+		produtos, err := h.relatorioService.ListaEstoque(r.Context(), claims.EmpresaID, search, catID, baixoEstoque, vencendo)
+		if err != nil {
+			utils.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		f.SetCellValue("Sheet1", "A1", "Listagem Detalhada de Estoque")
+		f.SetCellValue("Sheet1", "A2", "Produto")
+		f.SetCellValue("Sheet1", "B2", "Categoria")
+		f.SetCellValue("Sheet1", "C2", "Estoque")
+		f.SetCellValue("Sheet1", "D2", "Preço Venda")
+
+		for i, p := range produtos {
+			row := i + 3
+			f.SetCellValue("Sheet1", fmt.Sprintf("A%d", row), p.Nome)
+			f.SetCellValue("Sheet1", fmt.Sprintf("B%d", row), p.Categoria)
+			f.SetCellValue("Sheet1", fmt.Sprintf("C%d", row), p.EstoqueAtual)
+			f.SetCellValue("Sheet1", fmt.Sprintf("D%d", row), p.PrecoVenda)
+		}
 	} else if tipo == "financeiro" {
 		rel, err := h.relatorioService.FinanceiroResumo(r.Context(), claims.EmpresaID)
 		if err != nil {

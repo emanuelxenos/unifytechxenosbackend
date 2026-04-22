@@ -16,6 +16,10 @@ func NewRelatorioService(db *database.PostgresDB) *RelatorioService {
 	return &RelatorioService{db: db}
 }
 
+func (s *RelatorioService) GetDB() *database.PostgresDB {
+	return s.db
+}
+
 type RelatorioVendasDia struct {
 	TotalVendas       int                      `json:"total_vendas"`
 	ValorTotal        float64                  `json:"valor_total"`
@@ -189,6 +193,96 @@ func (s *RelatorioService) EstoqueResumo(ctx context.Context, empresaID int) (*R
 		 FROM produto WHERE empresa_id = $1 AND ativo = TRUE`,
 		empresaID).Scan(&rel.TotalProdutos, &rel.ValorTotalCusto, &rel.ValorTotalVenda, &rel.ProdutosBaixos, &rel.SugestaoCompraTotal, &rel.ProdutosVencendo)
 	return rel, err
+}
+
+type ProdutoRelatorio struct {
+	ID           int     `json:"id"`
+	Nome         string  `json:"nome"`
+	PrecoCusto   float64 `json:"preco_custo"`
+	PrecoVenda   float64 `json:"preco_venda"`
+	EstoqueAtual float64 `json:"estoque_atual"`
+	EstoqueMin   float64 `json:"estoque_minimo"`
+	Categoria    string  `json:"categoria"`
+}
+
+func (s *RelatorioService) ListaEstoque(ctx context.Context, empresaID int, search string, catID int, baixoEstoque, vencendo bool) ([]ProdutoRelatorio, error) {
+	query := `
+		SELECT p.id_produto, p.nome, p.preco_custo, p.preco_venda, p.estoque_atual, p.estoque_minimo, COALESCE(c.nome, 'Sem Categoria')
+		FROM produto p
+		LEFT JOIN categoria c ON p.categoria_id = c.id_categoria
+		WHERE p.empresa_id = $1 AND p.ativo = TRUE
+	`
+	args := []interface{}{empresaID}
+	placeholderID := 2
+
+	if search != "" {
+		query += fmt.Sprintf(" AND p.nome ILIKE $%d", placeholderID)
+		args = append(args, "%"+search+"%")
+		placeholderID++
+	}
+	if catID > 0 {
+		query += fmt.Sprintf(" AND p.categoria_id = $%d", placeholderID)
+		args = append(args, catID)
+		placeholderID++
+	}
+	if baixoEstoque {
+		query += " AND p.estoque_atual <= p.estoque_minimo AND p.controlar_estoque = TRUE"
+	}
+	if vencendo {
+		query += " AND p.data_vencimento <= CURRENT_DATE + INTERVAL '15 days'"
+	}
+
+	query += " ORDER BY p.nome ASC LIMIT 1000"
+
+	rows, err := s.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []ProdutoRelatorio
+	for rows.Next() {
+		var p ProdutoRelatorio
+		rows.Scan(&p.ID, &p.Nome, &p.PrecoCusto, &p.PrecoVenda, &p.EstoqueAtual, &p.EstoqueMin, &p.Categoria)
+		list = append(list, p)
+	}
+	return list, nil
+}
+
+type ProdutoSugestao struct {
+	ID           int     `json:"id_produto"`
+	Nome         string  `json:"nome"`
+	EstoqueAtual float64 `json:"estoque_atual"`
+	EstoqueMin   float64 `json:"estoque_minimo"`
+	SugestaoQtd  float64 `json:"sugestao_quantidade"`
+	PrecoCusto   float64 `json:"preco_custo"`
+}
+
+func (s *RelatorioService) SugestaoCompra(ctx context.Context, empresaID int) ([]ProdutoSugestao, error) {
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT id_produto, nome, estoque_atual, estoque_minimo, preco_custo
+		 FROM produto 
+		 WHERE empresa_id = $1 AND ativo = TRUE AND controlar_estoque = TRUE AND estoque_atual <= estoque_minimo
+		 ORDER BY (estoque_minimo - estoque_atual) DESC`,
+		empresaID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []ProdutoSugestao
+	for rows.Next() {
+		var p ProdutoSugestao
+		err := rows.Scan(&p.ID, &p.Nome, &p.EstoqueAtual, &p.EstoqueMin, &p.PrecoCusto)
+		if err == nil {
+			p.SugestaoQtd = (p.EstoqueMin * 2) - p.EstoqueAtual
+			if p.SugestaoQtd < 0 {
+				p.SugestaoQtd = 0
+			}
+			list = append(list, p)
+		}
+	}
+	return list, nil
 }
 
 type RelatorioFinanceiro struct {
