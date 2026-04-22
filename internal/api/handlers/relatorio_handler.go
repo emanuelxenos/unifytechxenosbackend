@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"erp-backend/internal/api/middleware"
@@ -402,6 +403,67 @@ func (h *RelatorioHandler) Etiqueta(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", "inline; filename=etiqueta.pdf")
+	pdf.Output(w)
+}
+
+func (h *RelatorioHandler) Etiquetas(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	idsStr := r.URL.Query().Get("ids")
+	if idsStr == "" {
+		utils.Error(w, http.StatusBadRequest, "IDs dos produtos são obrigatórios")
+		return
+	}
+
+	ids := strings.Split(idsStr, ",")
+
+	// Tamanho de etiqueta comum: 40x25mm
+	pdf := gofpdf.NewCustom(&gofpdf.InitType{
+		UnitStr: "mm",
+		Size:    gofpdf.SizeType{Wd: 40, Ht: 25},
+	})
+	tr := pdf.UnicodeTranslatorFromDescriptor("")
+
+	for _, idStr := range ids {
+		produtoID, _ := strconv.Atoi(idStr)
+		if produtoID == 0 {
+			continue
+		}
+
+		var nome string
+		var preco float64
+		err := h.relatorioService.GetDB().Pool.QueryRow(r.Context(),
+			`SELECT nome, preco_venda FROM produto WHERE id_produto = $1 AND empresa_id = $2`,
+			produtoID, claims.EmpresaID).Scan(&nome, &preco)
+		
+		if err != nil {
+			continue
+		}
+
+		pdf.SetMargins(2, 2, 2)
+		pdf.AddPage()
+
+		// Nome do Produto
+		pdf.SetFont("Arial", "B", 7)
+		pdf.MultiCell(36, 4, tr(nome), "", "C", false)
+		
+		// Divisor
+		pdf.SetDrawColor(200, 200, 200)
+		pdf.Line(5, 12, 35, 12)
+
+		// Preço
+		pdf.SetY(14)
+		pdf.SetFont("Arial", "B", 10)
+		pdf.CellFormat(36, 6, fmt.Sprintf("R$ %.2f", preco), "", 1, "C", false, 0, "")
+
+		// Rodapé UniTech
+		pdf.SetY(20)
+		pdf.SetFont("Arial", "I", 5)
+		pdf.SetTextColor(150, 150, 150)
+		pdf.CellFormat(36, 3, "UniTech Xenos ERP", "", 1, "C", false, 0, "")
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", "attachment; filename=etiquetas_lote.pdf")
 	pdf.Output(w)
 }
 
