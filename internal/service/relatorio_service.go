@@ -180,6 +180,12 @@ type RelatorioEstoque struct {
 	ProdutosVencendo   int     `json:"produtos_vencendo"`
 }
 
+type PerformanceProduto struct {
+	Mes     string  `json:"mes"`
+	Entrada float64 `json:"entrada"`
+	Saida   float64 `json:"saida"`
+}
+
 func (s *RelatorioService) EstoqueResumo(ctx context.Context, empresaID int) (*RelatorioEstoque, error) {
 	rel := &RelatorioEstoque{}
 	err := s.db.Pool.QueryRow(ctx,
@@ -246,6 +252,43 @@ func (s *RelatorioService) ListaEstoque(ctx context.Context, empresaID int, sear
 		rows.Scan(&p.ID, &p.Nome, &p.PrecoCusto, &p.PrecoVenda, &p.EstoqueAtual, &p.EstoqueMin, &p.Categoria)
 		list = append(list, p)
 	}
+	return list, nil
+}
+
+func (s *RelatorioService) PerformanceProduto(ctx context.Context, empresaID, produtoID int) ([]PerformanceProduto, error) {
+	query := `
+		WITH meses AS (
+			SELECT generate_series(
+				CURRENT_DATE - INTERVAL '5 months',
+				CURRENT_DATE,
+				'1 month'::interval
+			)::date as mes_data
+		)
+		SELECT 
+			TO_CHAR(m.mes_data, 'MM/YYYY') as mes,
+			COALESCE(SUM(CASE WHEN em.tipo_movimentacao IN ('entrada', 'compra', 'inventario_entrada', 'ajuste_entrada') THEN em.quantidade ELSE 0 END), 0) as entrada,
+			COALESCE(SUM(CASE WHEN em.tipo_movimentacao IN ('saida', 'venda', 'venda_item', 'inventario_saida', 'ajuste_saida', 'perda') THEN em.quantidade ELSE 0 END), 0) as saida
+		FROM meses m
+		LEFT JOIN estoque_movimentacao em ON TO_CHAR(em.data_movimentacao, 'MM/YYYY') = TO_CHAR(m.mes_data, 'MM/YYYY')
+			AND em.empresa_id = $1 AND em.produto_id = $2
+		GROUP BY m.mes_data
+		ORDER BY m.mes_data ASC
+	`
+	rows, err := s.db.Pool.Query(ctx, query, empresaID, produtoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []PerformanceProduto
+	for rows.Next() {
+		var p PerformanceProduto
+		if err := rows.Scan(&p.Mes, &p.Entrada, &p.Saida); err != nil {
+			return nil, err
+		}
+		list = append(list, p)
+	}
+
 	return list, nil
 }
 

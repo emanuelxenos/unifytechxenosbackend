@@ -580,3 +580,21 @@ func (h *RelatorioHandler) ExportarExcel(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Erro ao gerar Excel", http.StatusInternalServerError)
 	}
 }
+
+func (h *RelatorioHandler) PerformanceProduto(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	produtoID, _ := strconv.Atoi(r.URL.Query().Get("id"))
+
+	if produtoID == 0 {
+		utils.Error(w, http.StatusBadRequest, "ID do produto é obrigatório")
+		return
+	}
+
+	data, err := h.relatorioService.PerformanceProduto(r.Context(), claims.EmpresaID, produtoID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.JSON(w, http.StatusOK, data)
+}
