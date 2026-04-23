@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS estoque_lote (
     CONSTRAINT check_quantidade_positiva CHECK (quantidade_atual >= 0)
 );
 
-CREATE INDEX idx_lote_vencimento ON estoque_lote(data_vencimento);
+CREATE INDEX IF NOT EXISTS idx_lote_vencimento ON estoque_lote(data_vencimento);
 CREATE INDEX idx_lote_produto_ativo ON estoque_lote(produto_id) WHERE status = 'ativo';
 
 -- Adicionar id_lote em movimentação para rastreabilidade

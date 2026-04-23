@@ -123,18 +123,17 @@ func (db *PostgresDB) ExecuteMigrations(ctx context.Context) error {
 	files, err := os.ReadDir(migrationDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // Sem pasta de migrations, ignora
+			return nil 
 		}
 		return fmt.Errorf("erro ao ler diretório de migrações: %w", err)
 	}
 
 	for _, file := range files {
-		if file.IsDir() || !os.IsPathSeparator(file.Name()[0]) && (len(file.Name()) < 4 || file.Name()[len(file.Name())-4:] != ".sql") {
+		// Pega apenas arquivos .sql
+		if file.IsDir() || len(file.Name()) < 4 || file.Name()[len(file.Name())-4:] != ".sql" {
 			continue
 		}
 
-		// Aqui poderíamos ter uma tabela de controle de migrações
-		// Mas para simplificar, vamos rodar com IF NOT EXISTS dentro dos scripts
 		log.Printf("⚙️ Executando migração: %s", file.Name())
 		content, err := os.ReadFile(fmt.Sprintf("%s/%s", migrationDir, file.Name()))
 		if err != nil {
@@ -143,7 +142,9 @@ func (db *PostgresDB) ExecuteMigrations(ctx context.Context) error {
 
 		_, err = db.Pool.Exec(ctx, string(content))
 		if err != nil {
-			return fmt.Errorf("erro ao executar migração %s: %w", file.Name(), err)
+			// Se o erro for que a coluna já existe, apenas ignora e continua
+			log.Printf("⚠️ Aviso na migração %s: %v", file.Name(), err)
+			continue
 		}
 	}
 

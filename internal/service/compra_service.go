@@ -19,7 +19,12 @@ func NewCompraService(db *database.PostgresDB) *CompraService {
 }
 
 func (s *CompraService) Criar(ctx context.Context, empresaID, usuarioID int, req models.CriarCompraRequest) (*models.Compra, error) {
-	dataEmissao, _ := time.Parse("2006-01-02", req.DataEmissao)
+	// Parsing de data mais resiliente
+	dataEmissao, err := time.Parse("2006-01-02", req.DataEmissao)
+	if err != nil {
+		log.Printf("⚠️ Data de emissão inválida (%s), usando data atual", req.DataEmissao)
+		dataEmissao = time.Now()
+	}
 
 	var valorTotal float64
 	for _, item := range req.Itens {
@@ -42,7 +47,8 @@ func (s *CompraService) Criar(ctx context.Context, empresaID, usuarioID int, req
 		dataEmissao, valorTotal, valorTotal,
 	).Scan(&compra.ID, &compra.DataCadastro, &compra.Status)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao criar compra: %w", err)
+		log.Printf("❌ Erro ao inserir compra no DB: %v", err)
+		return nil, fmt.Errorf("erro ao criar compra no banco: %w", err)
 	}
 
 	for i, item := range req.Itens {
@@ -53,6 +59,8 @@ func (s *CompraService) Criar(ctx context.Context, empresaID, usuarioID int, req
 			parsed, err := time.Parse("2006-01-02", item.DataVencimento)
 			if err == nil {
 				vcto = &parsed
+			} else {
+				log.Printf("⚠️ Data de vencimento inválida para produto %d: %s", item.ProdutoID, item.DataVencimento)
 			}
 		}
 
@@ -62,7 +70,8 @@ func (s *CompraService) Criar(ctx context.Context, empresaID, usuarioID int, req
 			compra.ID, item.ProdutoID, i+1, item.Quantidade, item.PrecoUnitario, vt, item.Localizacao, vcto, item.Lote,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("erro ao inserir item: %w", err)
+			log.Printf("❌ Erro ao inserir item %d: %v", item.ProdutoID, err)
+			return nil, fmt.Errorf("erro ao inserir item %d: %w", item.ProdutoID, err)
 		}
 	}
 

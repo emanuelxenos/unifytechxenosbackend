@@ -19,7 +19,8 @@ type EstoqueMovimentacao struct {
 	Observacao       *string   `json:"observacao,omitempty" db:"observacao"`
 
 	// Joins
-	ProdutoNome *string `json:"produto_nome,omitempty" db:"produto_nome"`
+	ProdutoNome    *string `json:"produto_nome,omitempty" db:"produto_nome"`
+	LoteFabricante *string `json:"lote_fabricante,omitempty" db:"lote_fabricante"`
 }
 
 type Inventario struct {

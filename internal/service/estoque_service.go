@@ -446,9 +446,11 @@ func (s *EstoqueService) ListarMovimentacoes(ctx context.Context, empresaID int,
 	query := `
 		SELECT m.id_movimentacao, m.empresa_id, m.produto_id, m.tipo_movimentacao, 
 		       m.quantidade, m.saldo_anterior, m.saldo_atual, m.origem_tipo, 
-		       m.origem_id, m.data_movimentacao, m.usuario_id, m.observacao, p.nome as produto_nome
+		       m.origem_id, m.data_movimentacao, m.usuario_id, m.observacao, 
+			   p.nome as produto_nome, l.lote_fabricante
 		FROM estoque_movimentacao m
 		JOIN produto p ON m.produto_id = p.id_produto
+		LEFT JOIN estoque_lote l ON m.lote_id = l.id_lote
 		WHERE m.empresa_id = $1
 	`
 	args := []interface{}{empresaID}
@@ -492,9 +494,11 @@ func (s *EstoqueService) ListarMovimentacoes(ctx context.Context, empresaID int,
 		err := rows.Scan(
 			&m.ID, &m.EmpresaID, &m.ProdutoID, &m.TipoMovimentacao,
 			&m.Quantidade, &m.SaldoAnterior, &m.SaldoAtual, &m.OrigemTipo,
-			&m.OrigemID, &m.DataMovimentacao, &m.UsuarioID, &m.Observacao, &m.ProdutoNome,
+			&m.OrigemID, &m.DataMovimentacao, &m.UsuarioID, &m.Observacao, 
+			&m.ProdutoNome, &m.LoteFabricante,
 		)
 		if err != nil {
+			log.Printf("⚠️ Erro ao escanear movimentação: %v", err)
 			continue
 		}
 		movs = append(movs, m)
