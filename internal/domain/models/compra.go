@@ -69,4 +69,5 @@ type ReceberCompraRequest struct {
 type ItemRecebidoRequest struct {
 	ProdutoID          int     `json:"produto_id"`
 	QuantidadeRecebida float64 `json:"quantidade_recebida"`
+	LoteFabricante     string  `json:"lote_fabricante,omitempty"`
 }

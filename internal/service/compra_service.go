@@ -95,6 +95,10 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 	}
 	defer tx.Rollback(ctx)
 
+	// Buscar dados da nota fiscal para usar como lote padrão
+	var numeroNF string
+	_ = tx.QueryRow(ctx, "SELECT COALESCE(numero_nota_fiscal, 'S-NF') FROM compra WHERE id_compra = $1", compraID).Scan(&numeroNF)
+
 	itens := req.ItensRecebidos
 	if len(itens) == 0 {
 		// Se não informou itens, recebe tudo que foi comprado
@@ -120,10 +124,10 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 			 WHERE compra_id = $1 AND produto_id = $2`, 
 			compraID, item.ProdutoID).Scan(&localizacao, &dataVencimento)
 		if err != nil {
-			// Se não encontrar dados específicos, apenas continua
 			log.Printf("⚠️ Dados de varejo não encontrados para o item %d na compra %d", item.ProdutoID, compraID)
 		}
 
+		// 1. Atualizar o item da compra
 		_, err = tx.Exec(ctx,
 			`UPDATE item_compra SET quantidade_recebida = $1, data_recebimento = CURRENT_TIMESTAMP
 			 WHERE compra_id = $2 AND produto_id = $3`,
@@ -133,34 +137,69 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 			return fmt.Errorf("erro ao atualizar item: %w", err)
 		}
 
-		// Atualizar estoque
-		var saldoAtual float64
-		tx.QueryRow(ctx, `SELECT estoque_atual FROM produto WHERE id_produto = $1`, item.ProdutoID).Scan(&saldoAtual)
+		// 2. Buscar saldo atual para o log
+		var saldoAnterior float64
+		_ = tx.QueryRow(ctx, `SELECT estoque_atual FROM produto WHERE id_produto = $1`, item.ProdutoID).Scan(&saldoAnterior)
+		novoSaldo := saldoAnterior + item.QuantidadeRecebida
 
-		novoSaldo := saldoAtual + item.QuantidadeRecebida
+		// 3. CRIAR LOTE (MUITO IMPORTANTE PARA O FEFO)
+		loteFabricante := item.LoteFabricante
+		if loteFabricante == "" {
+			loteFabricante = numeroNF
+		}
 		
-		// Atualizar produto com novos dados de varejo
-		_, _ = tx.Exec(ctx,
+		loteInterno := fmt.Sprintf("COM-%d-%d", compraID, item.ProdutoID)
+		vencimento := time.Now().AddDate(1, 0, 0)
+		if dataVencimento != nil {
+			vencimento = *dataVencimento
+		}
+
+		var loteID int
+		err = tx.QueryRow(ctx,
+			`INSERT INTO estoque_lote (empresa_id, produto_id, localizacao_id, lote_interno, 
+			                           lote_fabricante, quantidade_inicial, quantidade_atual, 
+			                           data_vencimento, usuario_id, observacao, status)
+			 VALUES ($1, $2, (SELECT id_localizacao FROM estoque_localizacao WHERE empresa_id = $1 AND nome = $3 LIMIT 1), 
+			         $4, $5, $6, $6, $7, $8, $9, 'ativo')
+			 RETURNING id_lote`,
+			empresaID, item.ProdutoID, localizacao, loteInterno,
+			loteFabricante, item.QuantidadeRecebida, vencimento, usuarioID, fmt.Sprintf("Recebimento Compra NF %s", numeroNF),
+		).Scan(&loteID)
+		if err != nil {
+			return fmt.Errorf("erro ao criar lote de compra: %w", err)
+		}
+
+		// 4. Atualizar produto com novos dados de varejo e estoque global
+		_, err = tx.Exec(ctx,
 			`UPDATE produto 
 			 SET estoque_atual = $1, 
 			     data_ultima_compra = CURRENT_DATE,
 				 localizacao = COALESCE($2, localizacao),
 				 data_vencimento = COALESCE($3, data_vencimento)
-			 WHERE id_produto = $4`,
-			novoSaldo, localizacao, dataVencimento, item.ProdutoID,
+			 WHERE id_produto = $4 AND empresa_id = $5`,
+			novoSaldo, localizacao, dataVencimento, item.ProdutoID, empresaID,
 		)
+		if err != nil {
+			return fmt.Errorf("erro ao atualizar saldo global do produto: %w", err)
+		}
 
-		_, _ = tx.Exec(ctx,
+		// 5. Registrar movimentação com VÍNCULO AO LOTE
+		_, err = tx.Exec(ctx,
 			`INSERT INTO estoque_movimentacao (empresa_id, produto_id, tipo_movimentacao,
-			 quantidade, saldo_anterior, saldo_atual, origem_tipo, origem_id, usuario_id)
-			 VALUES ($1, $2, 'entrada', $3, $4, $5, 'compra', $6, $7)`,
+			 quantidade, saldo_anterior, saldo_atual, origem_tipo, origem_id, usuario_id, lote_id, observacao)
+			 VALUES ($1, $2, 'entrada', $3, $4, $5, 'compra', $6, $7, $8, $9)`,
 			empresaID, item.ProdutoID, item.QuantidadeRecebida,
-			saldoAtual, novoSaldo, compraID, usuarioID,
+			saldoAnterior, novoSaldo, compraID, usuarioID, loteID, fmt.Sprintf("Entrada NF %s", numeroNF),
 		)
+		if err != nil {
+			return fmt.Errorf("erro ao registrar histórico de compra: %w", err)
+		}
 	}
 
-	_, _ = tx.Exec(ctx,
-		`UPDATE compra SET status = 'recebida' WHERE id_compra = $1`, compraID)
+	_, err = tx.Exec(ctx, `UPDATE compra SET status = 'recebida' WHERE id_compra = $1 AND empresa_id = $2`, compraID, empresaID)
+	if err != nil {
+		return fmt.Errorf("erro ao finalizar status da compra: %w", err)
+	}
 
 	return tx.Commit(ctx)
 }
