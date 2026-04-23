@@ -57,9 +57,9 @@ func (s *CompraService) Criar(ctx context.Context, empresaID, usuarioID int, req
 		}
 
 		_, err = tx.Exec(ctx,
-			`INSERT INTO item_compra (compra_id, produto_id, sequencia, quantidade, preco_unitario, valor_total, localizacao, data_vencimento)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			compra.ID, item.ProdutoID, i+1, item.Quantidade, item.PrecoUnitario, vt, item.Localizacao, vcto,
+			`INSERT INTO item_compra (compra_id, produto_id, sequencia, quantidade, preco_unitario, valor_total, localizacao, data_vencimento, lote)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			compra.ID, item.ProdutoID, i+1, item.Quantidade, item.PrecoUnitario, vt, item.Localizacao, vcto, item.Lote,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("erro ao inserir item: %w", err)
@@ -116,13 +116,14 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 	}
 
 	for _, item := range itens {
-		// Buscar dados do item da compra (localizacao e vencimento)
+		// Buscar dados do item da compra (localizacao, vencimento e lote)
 		var localizacao *string
 		var dataVencimento *time.Time
+		var loteSalvo *string
 		err = tx.QueryRow(ctx, 
-			`SELECT localizacao, data_vencimento FROM item_compra 
+			`SELECT localizacao, data_vencimento, lote FROM item_compra 
 			 WHERE compra_id = $1 AND produto_id = $2`, 
-			compraID, item.ProdutoID).Scan(&localizacao, &dataVencimento)
+			compraID, item.ProdutoID).Scan(&localizacao, &dataVencimento, &loteSalvo)
 		if err != nil {
 			log.Printf("⚠️ Dados de varejo não encontrados para o item %d na compra %d", item.ProdutoID, compraID)
 		}
@@ -144,6 +145,9 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 
 		// 3. CRIAR LOTE (MUITO IMPORTANTE PARA O FEFO)
 		loteFabricante := item.LoteFabricante
+		if loteFabricante == "" && loteSalvo != nil {
+			loteFabricante = *loteSalvo
+		}
 		if loteFabricante == "" {
 			loteFabricante = numeroNF
 		}

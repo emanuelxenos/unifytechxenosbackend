@@ -55,11 +55,12 @@ type CriarCompraRequest struct {
 }
 
 type CriarItemCompraRequest struct {
-	ProdutoID     int     `json:"produto_id"`
-	Quantidade    float64 `json:"quantidade"`
-	PrecoUnitario float64 `json:"preco_unitario"`
-	Localizacao   string  `json:"localizacao,omitempty"`
-	DataVencimento string `json:"data_vencimento,omitempty"`
+	ProdutoID      int     `json:"produto_id"`
+	Quantidade     float64 `json:"quantidade"`
+	PrecoUnitario  float64 `json:"preco_unitario"`
+	Localizacao    string  `json:"localizacao,omitempty"`
+	DataVencimento string  `json:"data_vencimento,omitempty"`
+	Lote           string  `json:"lote,omitempty"`
 }
 
 type ReceberCompraRequest struct {

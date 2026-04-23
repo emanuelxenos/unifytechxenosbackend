@@ -380,6 +380,9 @@ CREATE TABLE IF NOT EXISTS item_compra (
     valor_total DECIMAL(12,2) NOT NULL,
     valor_desconto DECIMAL(12,2) DEFAULT 0.00,
     data_recebimento TIMESTAMP,
+    localizacao VARCHAR(100),
+    data_vencimento DATE,
+    lote VARCHAR(100),
     UNIQUE(compra_id, sequencia)
 );
 
