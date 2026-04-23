@@ -54,10 +54,13 @@ type InventarioItem struct {
 }
 
 type AjusteEstoqueRequest struct {
-	ProdutoID  int     `json:"produto_id"`
-	Quantidade float64 `json:"quantidade"`
-	Tipo       string  `json:"tipo"`
-	Motivo     string  `json:"motivo"`
+	ProdutoID      int     `json:"produto_id"`
+	Quantidade     float64 `json:"quantidade"`
+	Tipo           string  `json:"tipo"`
+	Motivo         string  `json:"motivo"`
+	LoteFabricante *string `json:"lote_fabricante"`
+	DataVencimento *string `json:"data_vencimento"`
+	LocalizacaoID  *int    `json:"localizacao_id"`
 }
 
 type CriarInventarioRequest struct {
@@ -83,4 +86,34 @@ type EstoqueBaixoResponse struct {
 	Nome          string  `json:"nome"`
 	EstoqueAtual  float64 `json:"estoque_atual"`
 	EstoqueMinimo float64 `json:"estoque_minimo"`
+}
+
+type EstoqueLocalizacao struct {
+	ID        int       `json:"id_localizacao" db:"id_localizacao"`
+	EmpresaID int       `json:"empresa_id" db:"empresa_id"`
+	Codigo    string    `json:"codigo" db:"codigo"`
+	Nome      string    `json:"nome" db:"nome"`
+	Descricao *string   `json:"descricao,omitempty" db:"descricao"`
+	Ativo     bool      `json:"ativo" db:"ativo"`
+	DataCad   time.Time `json:"data_cadastro" db:"data_cadastro"`
+}
+
+type EstoqueLote struct {
+	ID             int        `json:"id_lote" db:"id_lote"`
+	EmpresaID      int        `json:"empresa_id" db:"empresa_id"`
+	ProdutoID      int        `json:"produto_id" db:"produto_id"`
+	LocalizacaoID  *int       `json:"localizacao_id,omitempty" db:"localizacao_id"`
+	LoteInterno    string     `json:"lote_interno" db:"lote_interno"`
+	LoteFabricante *string    `json:"lote_fabricante,omitempty" db:"lote_fabricante"`
+	QtdInicial     float64    `json:"quantidade_inicial" db:"quantidade_inicial"`
+	QtdAtual       float64    `json:"quantidade_atual" db:"quantidade_atual"`
+	DataFabricacao *time.Time `json:"data_fabricacao,omitempty" db:"data_fabricacao"`
+	DataVencimento time.Time  `json:"data_vencimento" db:"data_vencimento"`
+	DataReceb      time.Time  `json:"data_recebimento" db:"data_recebimento"`
+	Status         string     `json:"status" db:"status"`
+	Observacao     *string    `json:"observacao,omitempty" db:"observacao"`
+	UsuarioID      *int       `json:"usuario_id,omitempty" db:"usuario_id"`
+
+	// Join
+	LocalizacaoNome *string `json:"localizacao_nome,omitempty" db:"localizacao_nome"`
 }

@@ -192,6 +192,7 @@ type AuditoriaMovimentacao struct {
 	Tipo       string    `json:"tipo"`
 	Quantidade float64   `json:"quantidade"`
 	Observacao string    `json:"observacao"`
+	Lote       string    `json:"lote"`
 }
 
 func (s *RelatorioService) EstoqueResumo(ctx context.Context, empresaID int) (*RelatorioEstoque, error) {
@@ -574,9 +575,11 @@ func (s *RelatorioService) AuditoriaMovimentacao(ctx context.Context, empresaID,
 			COALESCE(u.nome, 'Sistema'),
 			em.tipo_movimentacao,
 			em.quantidade,
-			COALESCE(em.observacao, '')
+			COALESCE(em.observacao, ''),
+			COALESCE(el.lote_interno, '-')
 		FROM estoque_movimentacao em
 		LEFT JOIN usuario u ON em.usuario_id = u.id_usuario
+		LEFT JOIN estoque_lote el ON em.lote_id = el.id_lote
 		WHERE em.empresa_id = $1 AND em.produto_id = $2
 		ORDER BY em.data_movimentacao DESC
 		LIMIT 50
@@ -589,7 +592,7 @@ func (s *RelatorioService) AuditoriaMovimentacao(ctx context.Context, empresaID,
 	var list []AuditoriaMovimentacao
 	for rows.Next() {
 		var a AuditoriaMovimentacao
-		if err := rows.Scan(&a.Data, &a.Usuario, &a.Tipo, &a.Quantidade, &a.Observacao); err != nil {
+		if err := rows.Scan(&a.Data, &a.Usuario, &a.Tipo, &a.Quantidade, &a.Observacao, &a.Lote); err != nil {
 			return nil, err
 		}
 		list = append(list, a)

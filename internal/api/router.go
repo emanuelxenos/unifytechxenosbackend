@@ -11,6 +11,7 @@ import (
 	"erp-backend/internal/api/middleware"
 	"erp-backend/internal/infrastructure/database"
 	ws "erp-backend/internal/infrastructure/websocket"
+	"erp-backend/internal/service"
 	"erp-backend/pkg/config"
 )
 
@@ -25,10 +26,11 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 	// Handlers
 	authHandler := handlers.NewAuthHandler(db, cfg)
 	caixaHandler := handlers.NewCaixaHandler(db)
-	vendaHandler := handlers.NewVendaHandler(db)
+	estoqueSvc := service.NewEstoqueService(db)
+	estoqueHandler := handlers.NewEstoqueHandler(db, estoqueSvc)
+	vendaHandler := handlers.NewVendaHandler(db, estoqueSvc)
 	produtoHandler := handlers.NewProdutoHandler(db)
 	categoriaHandler := handlers.NewCategoriaHandler(db)
-	estoqueHandler := handlers.NewEstoqueHandler(db)
 	clienteHandler := handlers.NewClienteHandler(db)
 	fornecedorHandler := handlers.NewFornecedorHandler(db)
 	compraHandler := handlers.NewCompraHandler(db)
@@ -107,6 +109,9 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 			r.Get("/api/estoque/inventarios", estoqueHandler.ListarInventarios)
 			r.Get("/api/estoque/inventario/{id}", estoqueHandler.BuscarInventarioPorId)
 			r.Put("/api/estoque/inventario/{id}/item/{prodId}", estoqueHandler.AtualizarItemInventario)
+			r.Get("/api/estoque/lotes/{id}", estoqueHandler.ListarLotes)
+			r.Get("/api/estoque/localizacoes", estoqueHandler.ListarLocalizacoes)
+			r.Post("/api/estoque/localizacoes", estoqueHandler.CriarLocalizacao)
 
 			// Fornecedores
 			r.Post("/api/fornecedores", fornecedorHandler.Criar)

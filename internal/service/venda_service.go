@@ -11,11 +11,15 @@ import (
 )
 
 type VendaService struct {
-	db *database.PostgresDB
+	db             *database.PostgresDB
+	estoqueService *EstoqueService
 }
 
-func NewVendaService(db *database.PostgresDB) *VendaService {
-	return &VendaService{db: db}
+func NewVendaService(db *database.PostgresDB, estoqueSvc *EstoqueService) *VendaService {
+	return &VendaService{
+		db:             db,
+		estoqueService: estoqueSvc,
+	}
 }
 
 func (s *VendaService) Criar(ctx context.Context, empresaID, usuarioID int, req models.CriarVendaRequest) (*models.VendaResponse, error) {
@@ -89,6 +93,25 @@ func (s *VendaService) Criar(ctx context.Context, empresaID, usuarioID int, req 
 		)
 		if err != nil {
 			return nil, fmt.Errorf("erro ao inserir item %d: %w", i+1, err)
+		}
+
+		// 1. Buscar saldo atual para o log correto
+		var saldoAtual float64
+		err = tx.QueryRow(ctx, "SELECT estoque_atual FROM produto WHERE id_produto = $1", item.ProdutoID).Scan(&saldoAtual)
+		if err != nil {
+			return nil, fmt.Errorf("erro ao buscar saldo para log: %w", err)
+		}
+
+		// 2. Atualizar saldo global do produto PRIMEIRO (Para integridade)
+		_, err = tx.Exec(ctx, "UPDATE produto SET estoque_atual = estoque_atual - $1 WHERE id_produto = $2", item.Quantidade, item.ProdutoID)
+		if err != nil {
+			return nil, fmt.Errorf("erro ao atualizar saldo global: %w", err)
+		}
+
+		// 3. Baixar estoque por lotes (FEFO) - Gera os logs com saldo_anterior = saldoAtual
+		err = s.estoqueService.BaixarEstoquePorLotes(ctx, tx, empresaID, item.ProdutoID, item.Quantidade, "venda", vendaID, usuarioID, fmt.Sprintf("Venda %d", vendaID), saldoAtual)
+		if err != nil {
+			return nil, fmt.Errorf("erro ao baixar lote do produto %d: %w", item.ProdutoID, err)
 		}
 	}
 
@@ -282,3 +305,4 @@ func (s *VendaService) ListarVendas(ctx context.Context, empresaID int, inicio, 
 
 	return vendas, nil
 }
+

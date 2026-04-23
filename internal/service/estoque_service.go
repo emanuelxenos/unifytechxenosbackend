@@ -47,49 +47,139 @@ func (s *EstoqueService) EstoqueBaixo(ctx context.Context, empresaID int) ([]mod
 }
 
 func (s *EstoqueService) Ajuste(ctx context.Context, empresaID, usuarioID int, req models.AjusteEstoqueRequest) error {
-	// Buscar saldo atual
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Buscar saldo atual e se controla estoque
 	var saldoAtual float64
-	err := s.db.Pool.QueryRow(ctx,
-		`SELECT estoque_atual FROM produto WHERE id_produto = $1 AND empresa_id = $2`,
+	var controla bool
+	err = tx.QueryRow(ctx,
+		`SELECT estoque_atual, controlar_estoque FROM produto WHERE id_produto = $1 AND empresa_id = $2`,
 		req.ProdutoID, empresaID,
-	).Scan(&saldoAtual)
+	).Scan(&saldoAtual, &controla)
 	if err != nil {
 		return fmt.Errorf("produto não encontrado")
 	}
 
+	if !controla {
+		return fmt.Errorf("produto não controla estoque")
+	}
+
 	var novoSaldo float64
 	var tipoMov string
+	var loteID *int
 	switch req.Tipo {
 	case "entrada":
 		novoSaldo = saldoAtual + req.Quantidade
 		tipoMov = "entrada"
-	case "saida":
-		novoSaldo = saldoAtual - req.Quantidade
-		tipoMov = "saida"
+
+		// Criar novo lote para a entrada
+		loteInterno := fmt.Sprintf("L-%s-%d", time.Now().Format("20060102"), req.ProdutoID)
+		vencimento := time.Now().AddDate(1, 0, 0) // Default 1 ano se não informado
+		
+		if req.DataVencimento != nil && *req.DataVencimento != "" {
+			parsedDate := time.Time{}
+			var parseErr error
+			// Tentar vários formatos
+			layouts := []string{
+				time.RFC3339,
+				"2006-01-02T15:04:05.000Z",
+				"2006-01-02T15:04:05.000",
+				"2006-01-02T15:04:05",
+				"2006-01-02",
+			}
+			
+			for _, layout := range layouts {
+				parsedDate, parseErr = time.Parse(layout, *req.DataVencimento)
+				if parseErr == nil {
+					break
+				}
+			}
+			
+			if parseErr != nil {
+				return fmt.Errorf("formato de data de vencimento inválido: %s", *req.DataVencimento)
+			}
+			vencimento = parsedDate
+		}
+
+		err = tx.QueryRow(ctx,
+			`INSERT INTO estoque_lote (empresa_id, produto_id, localizacao_id, lote_interno, 
+			                           lote_fabricante, quantidade_inicial, quantidade_atual, 
+			                           data_vencimento, usuario_id, observacao)
+			 VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9)
+			 RETURNING id_lote`,
+			empresaID, req.ProdutoID, req.LocalizacaoID, loteInterno,
+			req.LoteFabricante, req.Quantidade, vencimento, usuarioID, req.Motivo,
+		).Scan(&loteID)
+		if err != nil {
+			return fmt.Errorf("erro ao criar lote: %w", err)
+		}
+
+		// LOG DE ENTRADA ÚNICO
+		_, err = tx.Exec(ctx,
+			`INSERT INTO estoque_movimentacao (empresa_id, produto_id, tipo_movimentacao,
+											   quantidade, saldo_anterior, saldo_atual,
+											   origem_tipo, origem_id, usuario_id, observacao, lote_id)
+			 VALUES ($1, $2, 'entrada', $3, $4, $5, 'manual', NULL, $6, $7, $8)`,
+			empresaID, req.ProdutoID, req.Quantidade,
+			saldoAtual, novoSaldo, usuarioID, req.Motivo, loteID,
+		)
+		if err != nil {
+			return fmt.Errorf("erro ao registrar entrada no histórico: %w", err)
+		}
+
+	case "saida", "perda", "ajuste":
+		// No caso de 'ajuste' genérico, decidimos se é entrada ou saída baseado na quantidade
+		qtdSaida := req.Quantidade
+		if req.Tipo == "ajuste" {
+			if req.Quantidade > 0 {
+				// Tratar ajuste positivo como entrada (recursivo simples)
+				req.Tipo = "entrada"
+				return s.Ajuste(ctx, empresaID, usuarioID, req)
+			}
+			qtdSaida = -req.Quantidade // Converter negativo para positivo para o motor de baixa
+		} else {
+			// Se o tipo já for 'saida' ou 'perda', garantimos que a quantidade seja positiva para a subtração
+			if qtdSaida < 0 {
+				qtdSaida = -qtdSaida
+			}
+		}
+
+		novoSaldo = saldoAtual - qtdSaida
+		tipoMov = req.Tipo
+		
+		log.Printf("DEBUG: Iniciando baixa por lotes. Produto: %d, QtdSaida: %.2f, SaldoAtual: %.2f, NovoSaldo: %.2f", req.ProdutoID, qtdSaida, saldoAtual, novoSaldo)
+
+		// 1. O MÉTODO ABAIXO GERA OS LOGS DE SAÍDA (FEFO) E ATUALIZA OS LOTES
+		err = s.baixarEstoquePorLotes(ctx, tx, empresaID, req.ProdutoID, qtdSaida, tipoMov, usuarioID, req.Motivo, 0, saldoAtual)
+		if err != nil {
+			return fmt.Errorf("erro ao baixar estoque por lotes: %w", err)
+		}
+
+		// 2. Atualizar saldo global do produto DEPOIS (Para garantir integridade do log)
+		_, err = tx.Exec(ctx,
+			`UPDATE produto SET estoque_atual = $1 WHERE id_produto = $2 AND empresa_id = $3`,
+			novoSaldo, req.ProdutoID, empresaID,
+		)
+		if err != nil {
+			log.Printf("❌ Erro ao atualizar saldo do produto: %v", err)
+			return fmt.Errorf("erro ao atualizar saldo do produto: %w", err)
+		}
+
 	default:
-		novoSaldo = req.Quantidade
-		tipoMov = "ajuste"
+		return fmt.Errorf("tipo de ajuste '%s' não suportado", req.Tipo)
 	}
 
-	// Atualizar estoque
-	_, err = s.db.Pool.Exec(ctx,
-		`UPDATE produto SET estoque_atual = $1 WHERE id_produto = $2`,
-		novoSaldo, req.ProdutoID,
-	)
-	if err != nil {
-		return fmt.Errorf("erro ao ajustar estoque: %w", err)
+	if err := tx.Commit(ctx); err != nil {
+		log.Printf("❌ Erro no commit da transação: %v", err)
+		return fmt.Errorf("erro ao finalizar transação: %w", err)
 	}
 
-	// Registrar movimentação
-	_, err = s.db.Pool.Exec(ctx,
-		`INSERT INTO estoque_movimentacao (empresa_id, produto_id, tipo_movimentacao,
-		                                    quantidade, saldo_anterior, saldo_atual,
-		                                    origem_tipo, usuario_id, observacao)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'manual', $7, $8)`,
-		empresaID, req.ProdutoID, tipoMov, req.Quantidade,
-		saldoAtual, novoSaldo, usuarioID, req.Motivo,
-	)
-	return err
+	log.Printf("✅ Ajuste de estoque concluído com sucesso!")
+	return nil
 }
 
 func (s *EstoqueService) CriarInventario(ctx context.Context, empresaID, usuarioID int, req models.CriarInventarioRequest) (*models.Inventario, error) {
@@ -426,4 +516,156 @@ func (s *EstoqueService) ListarInventarios(ctx context.Context, empresaID int, d
 		invs = append(invs, i)
 	}
 	return invs, nil
+}
+
+func (s *EstoqueService) ListarLotesPorProduto(ctx context.Context, empresaID, produtoID int) ([]models.EstoqueLote, error) {
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT el.id_lote, el.empresa_id, el.produto_id, el.localizacao_id, el.lote_interno, 
+		        el.lote_fabricante, el.quantidade_inicial, el.quantidade_atual, el.data_fabricacao, 
+		        el.data_vencimento, el.data_recebimento, el.status, el.observacao, el.usuario_id,
+		        loc.nome as localizacao_nome
+		 FROM estoque_lote el
+		 LEFT JOIN estoque_localizacao loc ON el.localizacao_id = loc.id_localizacao
+		 WHERE el.empresa_id = $1 AND el.produto_id = $2 AND el.status != 'esgotado'
+		 ORDER BY el.data_vencimento ASC`,
+		empresaID, produtoID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var lotes []models.EstoqueLote
+	for rows.Next() {
+		var l models.EstoqueLote
+		err := rows.Scan(
+			&l.ID, &l.EmpresaID, &l.ProdutoID, &l.LocalizacaoID, &l.LoteInterno,
+			&l.LoteFabricante, &l.QtdInicial, &l.QtdAtual, &l.DataFabricacao,
+			&l.DataVencimento, &l.DataReceb, &l.Status, &l.Observacao, &l.UsuarioID,
+			&l.LocalizacaoNome,
+		)
+		if err != nil {
+			log.Printf("Erro ao escanear lote: %v", err)
+			continue
+		}
+		lotes = append(lotes, l)
+	}
+	return lotes, nil
+}
+
+func (s *EstoqueService) ListarLocalizacoes(ctx context.Context, empresaID int) ([]models.EstoqueLocalizacao, error) {
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT id_localizacao, empresa_id, codigo, nome, descricao, ativo, data_cadastro
+		 FROM estoque_localizacao WHERE empresa_id = $1 AND ativo = true
+		 ORDER BY nome ASC`,
+		empresaID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var locs []models.EstoqueLocalizacao
+	for rows.Next() {
+		var l models.EstoqueLocalizacao
+		err := rows.Scan(&l.ID, &l.EmpresaID, &l.Codigo, &l.Nome, &l.Descricao, &l.Ativo, &l.DataCad)
+		if err != nil {
+			continue
+		}
+		locs = append(locs, l)
+	}
+	return locs, nil
+}
+
+func (s *EstoqueService) CriarLocalizacao(ctx context.Context, empresaID int, req models.EstoqueLocalizacao) error {
+	_, err := s.db.Pool.Exec(ctx,
+		`INSERT INTO estoque_localizacao (empresa_id, codigo, nome, descricao)
+		 VALUES ($1, $2, $3, $4)`,
+		empresaID, req.Codigo, req.Nome, req.Descricao,
+	)
+	return err
+}
+
+func (s *EstoqueService) BaixarEstoquePorLotes(ctx context.Context, tx database.Tx, empresaID, produtoID int, qtd float64, origemTipo string, origemID, usuarioID int, observacao string, saldoGlobalAtual float64) error {
+	return s.baixarEstoquePorLotes(ctx, tx, empresaID, produtoID, qtd, origemTipo, usuarioID, observacao, origemID, saldoGlobalAtual)
+}
+
+func (s *EstoqueService) baixarEstoquePorLotes(ctx context.Context, tx database.Tx, empresaID, produtoID int, qtd float64, origemTipo string, usuarioID int, observacao string, origemID int, saldoGlobalAtual float64) error {
+	// Buscar lotes ativos ordenados por vencimento (FEFO)
+	rows, err := tx.Query(ctx,
+		`SELECT id_lote, quantidade_atual, lote_interno 
+		 FROM estoque_lote 
+		 WHERE empresa_id = $1 AND produto_id = $2 AND status = 'ativo' AND quantidade_atual > 0
+		 ORDER BY data_vencimento ASC, data_recebimento ASC`,
+		empresaID, produtoID,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type loteItem struct {
+		ID   int
+		Qtd  float64
+		Nome string
+	}
+
+	var lotes []loteItem
+	for rows.Next() {
+		var l loteItem
+		if err := rows.Scan(&l.ID, &l.Qtd, &l.Nome); err != nil {
+			return err
+		}
+		lotes = append(lotes, l)
+	}
+
+	restante := qtd
+	for _, lote := range lotes {
+		if restante <= 0 {
+			break
+		}
+
+		consumir := lote.Qtd
+		if consumir > restante {
+			consumir = restante
+		}
+
+		// Atualizar o lote
+		_, err = tx.Exec(ctx,
+			`UPDATE estoque_lote SET quantidade_atual = quantidade_atual - $1,
+			 status = CASE WHEN (quantidade_atual - $1) <= 0 THEN 'esgotado' ELSE 'ativo' END
+			 WHERE id_lote = $2`,
+			consumir, lote.ID,
+		)
+		if err != nil {
+			return err
+		}
+
+		// Registrar na movimentação para rastreabilidade
+		// O saldo anterior é o saldo global que recebemos no início ou o saldo após o consumo do lote anterior
+		saldoAnteriorLoop := saldoGlobalAtual
+		saldoAtualLoop := saldoGlobalAtual - consumir
+		
+		obsFinal := fmt.Sprintf("%s - Consumo Lote %s", observacao, lote.Nome)
+		_, err = tx.Exec(ctx,
+			`INSERT INTO estoque_movimentacao (empresa_id, produto_id, tipo_movimentacao,
+											   quantidade, saldo_anterior, saldo_atual,
+											   origem_tipo, origem_id, usuario_id, observacao, lote_id)
+			 VALUES ($1, $2, 'saida', $3, $4, $5, $6, $7, $8, $9, $10)`,
+			empresaID, produtoID, consumir, saldoAnteriorLoop, saldoAtualLoop,
+			origemTipo, origemID, usuarioID, obsFinal, lote.ID,
+		)
+		if err != nil {
+			return err
+		}
+
+		restante -= consumir
+		saldoGlobalAtual = saldoAtualLoop // Atualizar para o próximo lote no loop
+	}
+
+	if restante > 0 {
+		return fmt.Errorf("estoque insuficiente para completar a baixa por lotes (faltam %.2f)", restante)
+	}
+
+	return nil
 }

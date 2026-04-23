@@ -208,6 +208,38 @@ CREATE TABLE IF NOT EXISTS produto (
     observacoes TEXT
 );
 
+CREATE TABLE IF NOT EXISTS estoque_localizacao (
+    id_localizacao SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresa(id_empresa) ON DELETE CASCADE,
+    codigo VARCHAR(50) NOT NULL,
+    nome VARCHAR(100) NOT NULL,
+    descricao TEXT,
+    ativo BOOLEAN DEFAULT TRUE,
+    data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(empresa_id, codigo)
+);
+
+CREATE TABLE IF NOT EXISTS estoque_lote (
+    id_lote SERIAL PRIMARY KEY,
+    empresa_id INTEGER NOT NULL REFERENCES empresa(id_empresa) ON DELETE CASCADE,
+    produto_id INTEGER NOT NULL REFERENCES produto(id_produto) ON DELETE CASCADE,
+    localizacao_id INTEGER REFERENCES estoque_localizacao(id_localizacao),
+    lote_interno VARCHAR(50) NOT NULL,
+    lote_fabricante VARCHAR(50),
+    quantidade_inicial DECIMAL(12,4) NOT NULL,
+    quantidade_atual DECIMAL(12,4) NOT NULL DEFAULT 0,
+    data_fabricacao DATE,
+    data_vencimento DATE NOT NULL,
+    data_recebimento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'ativo',
+    observacao TEXT,
+    usuario_id INTEGER REFERENCES usuario(id_usuario),
+    CONSTRAINT check_quantidade_positiva CHECK (quantidade_atual >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lote_vencimento ON estoque_lote(data_vencimento);
+CREATE INDEX IF NOT EXISTS idx_lote_produto_ativo ON estoque_lote(produto_id) WHERE status = 'ativo';
+
 CREATE TABLE IF NOT EXISTS fornecedor (
     id_fornecedor SERIAL PRIMARY KEY,
     empresa_id INTEGER NOT NULL REFERENCES empresa(id_empresa) ON DELETE CASCADE,
@@ -315,8 +347,7 @@ CREATE TABLE IF NOT EXISTS estoque_movimentacao (
     data_movimentacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_id INTEGER REFERENCES usuario(id_usuario),
     observacao TEXT,
-    lote VARCHAR(50),
-    data_validade_lote DATE
+    lote_id INTEGER REFERENCES estoque_lote(id_lote)
 );
 
 CREATE TABLE IF NOT EXISTS compra (

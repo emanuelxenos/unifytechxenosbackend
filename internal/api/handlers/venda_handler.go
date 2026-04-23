@@ -18,8 +18,11 @@ type VendaHandler struct {
 	vendaService *service.VendaService
 }
 
-func NewVendaHandler(db *database.PostgresDB) *VendaHandler {
-	return &VendaHandler{vendaService: service.NewVendaService(db)}
+func NewVendaHandler(db *database.PostgresDB, estoqueSvc *service.EstoqueService) *VendaHandler {
+	if estoqueSvc == nil {
+		estoqueSvc = service.NewEstoqueService(db)
+	}
+	return &VendaHandler{vendaService: service.NewVendaService(db, estoqueSvc)}
 }
 
 func (h *VendaHandler) Criar(w http.ResponseWriter, r *http.Request) {

@@ -23,6 +23,10 @@ type PgxPoolIface interface {
 	Ping(context.Context) error
 }
 
+type Tx interface {
+	pgx.Tx
+}
+
 type PostgresDB struct {
 	Pool PgxPoolIface
 }
@@ -55,6 +59,11 @@ func NewPostgresDB(databaseURL string) (*PostgresDB, error) {
 	// Inicializar banco se for a primeira vez
 	if err := db.InitializeSchema(ctx); err != nil {
 		log.Printf("⚠️ Alerta na inicialização do banco: %v", err)
+	}
+
+	// Executar migrações pendentes
+	if err := db.ExecuteMigrations(ctx); err != nil {
+		log.Printf("⚠️ Erro ao executar migrações: %v", err)
 	}
 
 	return db, nil
@@ -106,5 +115,37 @@ func (db *PostgresDB) InitializeSchema(ctx context.Context) error {
 	}
 
 	log.Println("✅ Banco de dados instalado e configurado com sucesso!")
+	return nil
+}
+
+func (db *PostgresDB) ExecuteMigrations(ctx context.Context) error {
+	migrationDir := "migrations"
+	files, err := os.ReadDir(migrationDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Sem pasta de migrations, ignora
+		}
+		return fmt.Errorf("erro ao ler diretório de migrações: %w", err)
+	}
+
+	for _, file := range files {
+		if file.IsDir() || !os.IsPathSeparator(file.Name()[0]) && (len(file.Name()) < 4 || file.Name()[len(file.Name())-4:] != ".sql") {
+			continue
+		}
+
+		// Aqui poderíamos ter uma tabela de controle de migrações
+		// Mas para simplificar, vamos rodar com IF NOT EXISTS dentro dos scripts
+		log.Printf("⚙️ Executando migração: %s", file.Name())
+		content, err := os.ReadFile(fmt.Sprintf("%s/%s", migrationDir, file.Name()))
+		if err != nil {
+			return fmt.Errorf("erro ao ler migração %s: %w", file.Name(), err)
+		}
+
+		_, err = db.Pool.Exec(ctx, string(content))
+		if err != nil {
+			return fmt.Errorf("erro ao executar migração %s: %w", file.Name(), err)
+		}
+	}
+
 	return nil
 }

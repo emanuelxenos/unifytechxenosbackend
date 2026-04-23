@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -18,8 +19,8 @@ type EstoqueHandler struct {
 	estoqueService *service.EstoqueService
 }
 
-func NewEstoqueHandler(db *database.PostgresDB) *EstoqueHandler {
-	return &EstoqueHandler{estoqueService: service.NewEstoqueService(db)}
+func NewEstoqueHandler(db *database.PostgresDB, estoqueSvc *service.EstoqueService) *EstoqueHandler {
+	return &EstoqueHandler{estoqueService: estoqueSvc}
 }
 
 func (h *EstoqueHandler) EstoqueBaixo(w http.ResponseWriter, r *http.Request) {
@@ -35,8 +36,10 @@ func (h *EstoqueHandler) EstoqueBaixo(w http.ResponseWriter, r *http.Request) {
 func (h *EstoqueHandler) Ajuste(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
 	var req models.AjusteEstoqueRequest
+	
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.Error(w, http.StatusBadRequest, "Dados inválidos")
+		log.Printf("❌ Erro ao decodificar JSON de ajuste: %v", err)
+		utils.Error(w, http.StatusBadRequest, "Dados inválidos: " + err.Error())
 		return
 	}
 
@@ -149,4 +152,42 @@ func (h *EstoqueHandler) AtualizarItemInventario(w http.ResponseWriter, r *http.
 		return
 	}
 	utils.JSONMessage(w, http.StatusOK, "Item atualizado com sucesso")
+}
+
+func (h *EstoqueHandler) ListarLotes(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	produtoID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+
+	lotes, err := h.estoqueService.ListarLotesPorProduto(r.Context(), claims.EmpresaID, produtoID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, lotes)
+}
+
+func (h *EstoqueHandler) ListarLocalizacoes(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+
+	locs, err := h.estoqueService.ListarLocalizacoes(r.Context(), claims.EmpresaID)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, locs)
+}
+
+func (h *EstoqueHandler) CriarLocalizacao(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	var req models.EstoqueLocalizacao
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.Error(w, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if err := h.estoqueService.CriarLocalizacao(r.Context(), claims.EmpresaID, req); err != nil {
+		utils.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSONMessage(w, http.StatusCreated, "Localização criada com sucesso")
 }
