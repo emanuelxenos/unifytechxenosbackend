@@ -294,31 +294,60 @@ func (s *EstoqueService) FinalizarInventario(ctx context.Context, empresaID, inv
 		}
 
 		qtdFisica := *item.QuantidadeFisica
-
-		// Atualizar estoque do produto para a quantidade física apurada
-		_, err = tx.Exec(ctx,
-			`UPDATE produto SET estoque_atual = $1 WHERE id_produto = $2`,
-			qtdFisica, item.ProdutoID,
-		)
-		if err != nil {
-			log.Printf("❌ Erro ao atualizar estoque do produto %d: %v", item.ProdutoID, err)
-			return fmt.Errorf("erro ao atualizar estoque real do produto %d: %w", item.ProdutoID, err)
-		}
-
-		// Registrar movimentação de ajuste
 		diferenca := qtdFisica - saldoAtual
-		if diferenca != 0 {
+
+		if diferenca < 0 {
+			// 1. DIVERGÊNCIA NEGATIVA: Usar motor FEFO para baixar a diferença dos lotes
+			qtdBaixar := -diferenca
+			log.Printf("📉 Inventário: Baixando %.2f do produto %d via FEFO (Diferença negativa)", qtdBaixar, item.ProdutoID)
+			
+			// Atualizar saldo global PRIMEIRO
+			_, err = tx.Exec(ctx, "UPDATE produto SET estoque_atual = $1 WHERE id_produto = $2 AND empresa_id = $3", qtdFisica, item.ProdutoID, empresaID)
+			if err != nil {
+				return fmt.Errorf("erro ao atualizar saldo global na baixa: %w", err)
+			}
+
+			err = s.baixarEstoquePorLotes(ctx, tx, empresaID, item.ProdutoID, qtdBaixar, "inventario", usuarioID, "Reconciliação de Inventário (Falta)", inventarioID, saldoAtual)
+			if err != nil {
+				return fmt.Errorf("erro ao reconciliar lotes por FEFO: %w", err)
+			}
+		} else if diferenca > 0 {
+			// 2. DIVERGÊNCIA POSITIVA: Criar lote de ajuste para a sobra
+			log.Printf("📈 Inventário: Criando lote de ajuste para sobra de %.2f do produto %d", diferenca, item.ProdutoID)
+			
+			loteInterno := fmt.Sprintf("INV-%d-%d", inventarioID, item.ProdutoID)
+			vencimento := time.Now().AddDate(1, 0, 0) // Default 1 ano
+
+			var loteID int
+			err = tx.QueryRow(ctx,
+				`INSERT INTO estoque_lote (empresa_id, produto_id, lote_interno, 
+				                           quantidade_inicial, quantidade_atual, 
+				                           data_vencimento, usuario_id, observacao, status)
+				 VALUES ($1, $2, $3, $4, $4, $5, $6, $7, 'ativo')
+				 RETURNING id_lote`,
+				empresaID, item.ProdutoID, loteInterno, diferenca, vencimento, usuarioID, "Reconciliação de Inventário (Sobra)",
+			).Scan(&loteID)
+			if err != nil {
+				return fmt.Errorf("erro ao criar lote de sobra: %w", err)
+			}
+
+			// Atualizar saldo global
+			_, err = tx.Exec(ctx, "UPDATE produto SET estoque_atual = $1 WHERE id_produto = $2 AND empresa_id = $3", qtdFisica, item.ProdutoID, empresaID)
+			if err != nil {
+				return fmt.Errorf("erro ao atualizar saldo global na sobra: %w", err)
+			}
+
+			// Registrar log de movimentação
 			_, err = tx.Exec(ctx,
 				`INSERT INTO estoque_movimentacao (empresa_id, produto_id, tipo_movimentacao,
 													quantidade, saldo_anterior, saldo_atual,
-													origem_tipo, origem_id, usuario_id, observacao)
-				 VALUES ($1, $2, 'inventario', $3, $4, $5, 'inventario', $6, $7, $8)`,
+													origem_tipo, origem_id, usuario_id, observacao, lote_id)
+				 VALUES ($1, $2, 'inventario', $3, $4, $5, 'inventario', $6, $7, $8, $9)`,
 				empresaID, item.ProdutoID, diferenca, saldoAtual, qtdFisica,
-				inventarioID, usuarioID, "Reconciliação automática de inventário",
+				inventarioID, usuarioID, "Reconciliação de Inventário (Sobra)", loteID,
 			)
 			if err != nil {
-				log.Printf("❌ Erro ao registrar movimentação para produto %d: %v", item.ProdutoID, err)
-				return fmt.Errorf("erro ao registrar movimentação do produto %d: %w", item.ProdutoID, err)
+				return fmt.Errorf("erro ao registrar log de sobra: %w", err)
 			}
 		}
 	}
