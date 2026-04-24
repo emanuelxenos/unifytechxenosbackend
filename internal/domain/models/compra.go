@@ -64,7 +64,8 @@ type CriarItemCompraRequest struct {
 }
 
 type ReceberCompraRequest struct {
-	ItensRecebidos []ItemRecebidoRequest `json:"itens_recebidos"`
+	NumeroNotaFiscal *string               `json:"numero_nota_fiscal"`
+	ItensRecebidos   []ItemRecebidoRequest `json:"itens_recebidos"`
 }
 
 type ItemRecebidoRequest struct {

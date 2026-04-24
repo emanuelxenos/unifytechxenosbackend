@@ -108,6 +108,15 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 	var numeroNF string
 	_ = tx.QueryRow(ctx, "SELECT COALESCE(numero_nota_fiscal, 'S-NF') FROM compra WHERE id_compra = $1", compraID).Scan(&numeroNF)
 
+	// Se veio uma nova NF no recebimento, atualiza a compra
+	if req.NumeroNotaFiscal != nil && *req.NumeroNotaFiscal != "" {
+		numeroNF = *req.NumeroNotaFiscal
+		_, err = tx.Exec(ctx, "UPDATE compra SET numero_nota_fiscal = $1 WHERE id_compra = $2", numeroNF, compraID)
+		if err != nil {
+			return fmt.Errorf("erro ao atualizar NF da compra: %w", err)
+		}
+	}
+
 	itens := req.ItensRecebidos
 	if len(itens) == 0 {
 		// Se não informou itens, recebe tudo que foi comprado
