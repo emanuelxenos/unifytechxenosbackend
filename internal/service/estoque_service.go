@@ -568,8 +568,9 @@ func (s *EstoqueService) ListarLotesPorProduto(ctx context.Context, empresaID, p
 		 FROM estoque_lote el
 		 JOIN produto p ON el.produto_id = p.id_produto
 		 LEFT JOIN estoque_localizacao loc ON el.localizacao_id = loc.id_localizacao
-		 WHERE el.empresa_id = $1 AND el.produto_id = $2 AND el.status != 'esgotado'
-		 ORDER BY el.data_vencimento ASC`,
+		 WHERE el.empresa_id = $1 AND el.produto_id = $2
+		 AND (el.quantidade_atual > 0 OR el.status = 'ativo')
+		 ORDER BY el.quantidade_atual DESC, el.data_vencimento ASC NULLS LAST`,
 		empresaID, produtoID,
 	)
 	if err != nil {
