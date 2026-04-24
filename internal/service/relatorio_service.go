@@ -200,11 +200,11 @@ func (s *RelatorioService) EstoqueResumo(ctx context.Context, empresaID int) (*R
 	err := s.db.Pool.QueryRow(ctx,
 		`SELECT 
 			COUNT(id_produto),
-			COALESCE(SUM(estoque_atual * preco_custo), 0),
-			COALESCE(SUM(estoque_atual * preco_venda), 0),
+			COALESCE(SUM(CASE WHEN estoque_atual > 0 THEN estoque_atual * preco_custo ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN estoque_atual > 0 THEN estoque_atual * preco_venda ELSE 0 END), 0),
 			COUNT(CASE WHEN estoque_atual <= estoque_minimo AND controlar_estoque = TRUE THEN 1 END),
 			COALESCE(SUM(CASE WHEN estoque_atual < estoque_minimo THEN (estoque_minimo - estoque_atual) * preco_custo ELSE 0 END), 0),
-			COUNT(CASE WHEN data_vencimento <= CURRENT_DATE + INTERVAL '15 days' THEN 1 END)
+			COUNT(CASE WHEN EXISTS (SELECT 1 FROM estoque_lote WHERE produto_id = id_produto AND status = 'ativo' AND quantidade_atual > 0 AND data_vencimento <= CURRENT_DATE + INTERVAL '15 days') THEN 1 END)
 		 FROM produto WHERE empresa_id = $1 AND ativo = TRUE`,
 		empresaID).Scan(&rel.TotalProdutos, &rel.ValorTotalCusto, &rel.ValorTotalVenda, &rel.ProdutosBaixos, &rel.SugestaoCompraTotal, &rel.ProdutosVencendo)
 	return rel, err
@@ -244,7 +244,7 @@ func (s *RelatorioService) ListaEstoque(ctx context.Context, empresaID int, sear
 		query += " AND p.estoque_atual <= p.estoque_minimo AND p.controlar_estoque = TRUE"
 	}
 	if vencendo {
-		query += " AND p.data_vencimento <= CURRENT_DATE + INTERVAL '15 days'"
+		query += " AND EXISTS (SELECT 1 FROM estoque_lote WHERE produto_id = p.id_produto AND status = 'ativo' AND quantidade_atual > 0 AND data_vencimento <= CURRENT_DATE + INTERVAL '15 days')"
 	}
 
 	query += " ORDER BY p.nome ASC LIMIT 1000"
