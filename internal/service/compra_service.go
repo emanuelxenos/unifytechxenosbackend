@@ -152,19 +152,31 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 		_ = tx.QueryRow(ctx, `SELECT estoque_atual FROM produto WHERE id_produto = $1`, item.ProdutoID).Scan(&saldoAnterior)
 		novoSaldo := saldoAnterior + item.QuantidadeRecebida
 
-		// 3. CRIAR LOTE (MUITO IMPORTANTE PARA O FEFO)
-		loteFabricante := item.LoteFabricante
-		if loteFabricante == "" && loteSalvo != nil {
-			loteFabricante = *loteSalvo
-		}
-		if loteFabricante == "" {
-			loteFabricante = numeroNF
-		}
-		
 		loteInterno := fmt.Sprintf("COM-%d-%d", compraID, item.ProdutoID)
+		
+		// Priorizar data de vencimento que veio no recebimento (conferência física)
 		vencimento := time.Now().AddDate(1, 0, 0)
-		if dataVencimento != nil {
+		if item.DataVencimento != nil && *item.DataVencimento != "" {
+			parsed, err := time.Parse(time.RFC3339, *item.DataVencimento)
+			if err == nil {
+				vencimento = parsed
+			} else {
+				// Tentar layout de data simples se RFC3339 falhar
+				parsed, err = time.Parse("2006-01-02", *item.DataVencimento)
+				if err == nil {
+					vencimento = parsed
+				}
+			}
+		} else if dataVencimento != nil {
 			vencimento = *dataVencimento
+		}
+
+		// Priorizar lote do fabricante que veio no recebimento
+		finalLoteFab := numeroNF
+		if item.LoteFabricante != nil && *item.LoteFabricante != "" {
+			finalLoteFab = *item.LoteFabricante
+		} else if loteSalvo != nil && *loteSalvo != "" {
+			finalLoteFab = *loteSalvo
 		}
 
 		var loteID int
@@ -172,11 +184,12 @@ func (s *CompraService) Receber(ctx context.Context, empresaID, compraID, usuari
 			`INSERT INTO estoque_lote (empresa_id, produto_id, localizacao_id, lote_interno, 
 			                           lote_fabricante, quantidade_inicial, quantidade_atual, 
 			                           data_vencimento, usuario_id, observacao, status)
-			 VALUES ($1, $2, (SELECT id_localizacao FROM estoque_localizacao WHERE empresa_id = $1 AND nome = $3 LIMIT 1), 
+			 VALUES ($1, $2, COALESCE($10, (SELECT id_localizacao FROM estoque_localizacao WHERE empresa_id = $1 AND nome = $3 LIMIT 1)), 
 			         $4, $5, $6, $6, $7, $8, $9, 'ativo')
 			 RETURNING id_lote`,
 			empresaID, item.ProdutoID, localizacao, loteInterno,
-			loteFabricante, item.QuantidadeRecebida, vencimento, usuarioID, fmt.Sprintf("Recebimento Compra NF %s", numeroNF),
+			finalLoteFab, item.QuantidadeRecebida, vencimento, usuarioID, fmt.Sprintf("Recebimento Compra NF %s", numeroNF),
+			item.LocalizacaoID,
 		).Scan(&loteID)
 		if err != nil {
 			return fmt.Errorf("erro ao criar lote de compra: %w", err)

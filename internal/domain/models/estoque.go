@@ -109,8 +109,8 @@ type EstoqueLote struct {
 	QtdInicial     float64    `json:"quantidade_inicial" db:"quantidade_inicial"`
 	QtdAtual       float64    `json:"quantidade_atual" db:"quantidade_atual"`
 	DataFabricacao *time.Time `json:"data_fabricacao,omitempty" db:"data_fabricacao"`
-	DataVencimento time.Time  `json:"data_vencimento" db:"data_vencimento"`
-	DataReceb      time.Time  `json:"data_recebimento" db:"data_recebimento"`
+	DataVencimento *time.Time `json:"data_vencimento,omitempty" db:"data_vencimento"`
+	DataReceb      *time.Time `json:"data_recebimento,omitempty" db:"data_recebimento"`
 	Status         string     `json:"status" db:"status"`
 	Observacao     *string    `json:"observacao,omitempty" db:"observacao"`
 	UsuarioID      *int       `json:"usuario_id,omitempty" db:"usuario_id"`

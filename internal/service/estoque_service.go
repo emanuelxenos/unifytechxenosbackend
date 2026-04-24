@@ -118,6 +118,14 @@ func (s *EstoqueService) Ajuste(ctx context.Context, empresaID, usuarioID int, r
 			return fmt.Errorf("erro ao criar lote: %w", err)
 		}
 
+		// Atualizar redundância no produto para listagem rápida
+		_, err = tx.Exec(ctx, 
+			`UPDATE produto SET 
+			    localizacao = (SELECT nome FROM estoque_localizacao WHERE id_localizacao = $1),
+			    data_vencimento = $2
+			 WHERE id_produto = $3`, 
+			req.LocalizacaoID, vencimento, req.ProdutoID)
+
 		// LOG DE ENTRADA ÚNICO
 		_, err = tx.Exec(ctx,
 			`INSERT INTO estoque_movimentacao (empresa_id, produto_id, tipo_movimentacao,
@@ -556,8 +564,9 @@ func (s *EstoqueService) ListarLotesPorProduto(ctx context.Context, empresaID, p
 		`SELECT el.id_lote, el.empresa_id, el.produto_id, el.localizacao_id, el.lote_interno, 
 		        el.lote_fabricante, el.quantidade_inicial, el.quantidade_atual, el.data_fabricacao, 
 		        el.data_vencimento, el.data_recebimento, el.status, el.observacao, el.usuario_id,
-		        loc.nome as localizacao_nome
+		        COALESCE(loc.nome, p.localizacao) as localizacao_nome
 		 FROM estoque_lote el
+		 JOIN produto p ON el.produto_id = p.id_produto
 		 LEFT JOIN estoque_localizacao loc ON el.localizacao_id = loc.id_localizacao
 		 WHERE el.empresa_id = $1 AND el.produto_id = $2 AND el.status != 'esgotado'
 		 ORDER BY el.data_vencimento ASC`,

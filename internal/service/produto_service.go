@@ -61,7 +61,8 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 	                 p.nome, p.descricao, p.unidade_venda, p.estoque_atual,
 	                 p.estoque_minimo, p.controlar_estoque, p.preco_custo,
 	                 p.preco_venda, p.preco_promocional, p.ativo, p.destacado,
-	                 p.data_cadastro, p.data_ultima_venda, p.localizacao, p.data_vencimento,
+	                 p.data_cadastro, p.data_ultima_venda, p.localizacao,
+	                 (SELECT MIN(data_vencimento) FROM estoque_lote WHERE produto_id = p.id_produto AND status = 'ativo') as data_vencimento,
 	                 c.nome as categoria_nome
 	          FROM produto p
 	          LEFT JOIN categoria c ON p.categoria_id = c.id_categoria
@@ -87,7 +88,7 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 	}
 
 	if apenasVencendo {
-		query += ` AND p.data_vencimento IS NOT NULL AND p.data_vencimento <= CURRENT_DATE + INTERVAL '15 days'`
+		query += ` AND EXISTS (SELECT 1 FROM estoque_lote WHERE produto_id = p.id_produto AND status = 'ativo' AND data_vencimento <= CURRENT_DATE + INTERVAL '15 days')`
 	}
 
 	query += fmt.Sprintf(` ORDER BY p.nome LIMIT $%d OFFSET $%d`, qArgIdx, qArgIdx+1)
@@ -160,7 +161,8 @@ func (s *ProdutoService) BuscarPorID(ctx context.Context, empresaID, produtoID i
 		        p.unidade_venda, p.estoque_atual, p.estoque_minimo,
 		        p.controlar_estoque, p.preco_custo, p.preco_venda,
 		        p.preco_promocional, p.ativo, p.destacado, p.data_cadastro,
-		        p.data_ultima_compra, p.data_ultima_venda, p.localizacao, p.data_vencimento,
+		        p.data_ultima_compra, p.data_ultima_venda, p.localizacao,
+		        (SELECT MIN(data_vencimento) FROM estoque_lote WHERE produto_id = p.id_produto AND status = 'ativo') as data_vencimento,
 		        c.nome as categoria_nome
 		 FROM produto p
 		 LEFT JOIN categoria c ON p.categoria_id = c.id_categoria
