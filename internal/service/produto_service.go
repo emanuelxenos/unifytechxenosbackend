@@ -267,3 +267,23 @@ func (s *ProdutoService) Inativar(ctx context.Context, empresaID, produtoID int)
 	}
 	return nil
 }
+
+func (s *ProdutoService) AtualizarPrecosLote(ctx context.Context, empresaID int, updates []models.BatchPrecoUpdate) error {
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("erro ao iniciar transação: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	for _, u := range updates {
+		_, err := tx.Exec(ctx,
+			`UPDATE produto SET preco_custo = $1, preco_venda = $2 WHERE id_produto = $3 AND empresa_id = $4`,
+			u.PrecoCusto, u.PrecoVenda, u.IDProduto, empresaID,
+		)
+		if err != nil {
+			return fmt.Errorf("erro ao atualizar produto %d: %w", u.IDProduto, err)
+		}
+	}
+
+	return tx.Commit(ctx)
+}

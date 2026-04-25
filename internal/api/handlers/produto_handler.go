@@ -199,3 +199,30 @@ func (h *ProdutoHandler) UploadFoto(w http.ResponseWriter, r *http.Request) {
 		"url": url,
 	})
 }
+
+func (h *ProdutoHandler) AtualizarPrecosLote(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	if claims == nil {
+		utils.Error(w, http.StatusUnauthorized, "Não autenticado")
+		return
+	}
+
+	var req models.BatchPrecoRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.Error(w, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if len(req.Updates) == 0 {
+		utils.Error(w, http.StatusBadRequest, "Nenhuma atualização fornecida")
+		return
+	}
+
+	err := h.produtoService.AtualizarPrecosLote(r.Context(), claims.EmpresaID, req.Updates)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.JSONMessage(w, http.StatusOK, "Preços atualizados com sucesso")
+}

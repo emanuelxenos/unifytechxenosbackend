@@ -70,3 +70,13 @@ type ProdutoBuscaResponse struct {
 	EstoqueAtual float64 `json:"estoque_atual"`
 	UnidadeVenda string  `json:"unidade_venda"`
 }
+
+type BatchPrecoUpdate struct {
+	IDProduto  int     `json:"id_produto"`
+	PrecoVenda float64 `json:"preco_venda"`
+	PrecoCusto float64 `json:"preco_custo"`
+}
+
+type BatchPrecoRequest struct {
+	Updates []BatchPrecoUpdate `json:"updates"`
+}
