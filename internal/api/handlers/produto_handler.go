@@ -90,7 +90,7 @@ func (h *ProdutoHandler) Criar(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserClaims(r)
 	var req models.CriarProdutoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.Error(w, http.StatusBadRequest, "Dados inválidos")
+		utils.Error(w, http.StatusBadRequest, "Dados inválidos: "+err.Error())
 		return
 	}
 	if req.Nome == "" || req.PrecoVenda <= 0 {
@@ -116,7 +116,7 @@ func (h *ProdutoHandler) Atualizar(w http.ResponseWriter, r *http.Request) {
 
 	var req models.CriarProdutoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.Error(w, http.StatusBadRequest, "Dados inválidos")
+		utils.Error(w, http.StatusBadRequest, "Dados inválidos: "+err.Error())
 		return
 	}
 

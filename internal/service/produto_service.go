@@ -58,9 +58,10 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 
 	// Query produtos
 	query := `SELECT p.id_produto, p.empresa_id, p.categoria_id, p.codigo_barras,
-	                 p.nome, p.descricao, p.unidade_venda, p.estoque_atual,
-	                 p.estoque_minimo, p.controlar_estoque, p.preco_custo,
-	                 p.preco_venda, p.preco_promocional, p.ativo, p.destacado,
+	                 p.codigo_interno, p.nome, p.descricao, p.marca, p.unidade_venda,
+	                 p.estoque_atual, p.estoque_minimo, p.controlar_estoque, p.preco_custo,
+	                 p.preco_venda, p.preco_promocional, p.data_inicio_promocao,
+	                 p.data_fim_promocao, p.margem_lucro, p.ativo, p.destacado,
 	                 p.data_cadastro, p.data_ultima_venda, p.localizacao,
 	                 (SELECT MIN(data_vencimento) FROM estoque_lote WHERE produto_id = p.id_produto AND status = 'ativo') as data_vencimento,
 	                 c.nome as categoria_nome
@@ -105,9 +106,10 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 		var p models.Produto
 		err := rows.Scan(
 			&p.ID, &p.EmpresaID, &p.CategoriaID, &p.CodigoBarras,
-			&p.Nome, &p.Descricao, &p.UnidadeVenda, &p.EstoqueAtual,
-			&p.EstoqueMinimo, &p.ControlarEstoque, &p.PrecoCusto,
-			&p.PrecoVenda, &p.PrecoPromocional, &p.Ativo, &p.Destacado,
+			&p.CodigoInterno, &p.Nome, &p.Descricao, &p.Marca, &p.UnidadeVenda,
+			&p.EstoqueAtual, &p.EstoqueMinimo, &p.ControlarEstoque, &p.PrecoCusto,
+			&p.PrecoVenda, &p.PrecoPromocional, &p.DataInicioPromocao,
+			&p.DataFimPromocao, &p.MargemLucro, &p.Ativo, &p.Destacado,
 			&p.DataCadastro, &p.DataUltimaVenda, &p.Localizacao, &p.DataVencimento,
 			&p.CategoriaNome,
 		)
@@ -160,7 +162,8 @@ func (s *ProdutoService) BuscarPorID(ctx context.Context, empresaID, produtoID i
 		        p.codigo_interno, p.nome, p.descricao, p.marca,
 		        p.unidade_venda, p.estoque_atual, p.estoque_minimo,
 		        p.controlar_estoque, p.preco_custo, p.preco_venda,
-		        p.preco_promocional, p.ativo, p.destacado, p.data_cadastro,
+		        p.preco_promocional, p.data_inicio_promocao, p.data_fim_promocao,
+		        p.margem_lucro, p.ativo, p.destacado, p.data_cadastro,
 		        p.data_ultima_compra, p.data_ultima_venda, p.localizacao,
 		        (SELECT MIN(data_vencimento) FROM estoque_lote WHERE produto_id = p.id_produto AND status = 'ativo') as data_vencimento,
 		        c.nome as categoria_nome
@@ -173,7 +176,8 @@ func (s *ProdutoService) BuscarPorID(ctx context.Context, empresaID, produtoID i
 		&p.CodigoInterno, &p.Nome, &p.Descricao, &p.Marca,
 		&p.UnidadeVenda, &p.EstoqueAtual, &p.EstoqueMinimo,
 		&p.ControlarEstoque, &p.PrecoCusto, &p.PrecoVenda,
-		&p.PrecoPromocional, &p.Ativo, &p.Destacado, &p.DataCadastro,
+		&p.PrecoPromocional, &p.DataInicioPromocao, &p.DataFimPromocao,
+		&p.MargemLucro, &p.Ativo, &p.Destacado, &p.DataCadastro,
 		&p.DataUltimaCompra, &p.DataUltimaVenda, &p.Localizacao, &p.DataVencimento,
 		&p.CategoriaNome,
 	)
@@ -193,14 +197,16 @@ func (s *ProdutoService) Criar(ctx context.Context, empresaID int, req models.Cr
 	err := s.db.Pool.QueryRow(ctx,
 		`INSERT INTO produto (empresa_id, codigo_barras, codigo_interno, nome, descricao,
 		                      categoria_id, unidade_venda, controlar_estoque,
-		                      estoque_minimo, preco_custo, preco_venda, marca,
-		                      localizacao, data_vencimento)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		                      estoque_minimo, preco_custo, preco_venda,
+		                      preco_promocional, data_inicio_promocao, data_fim_promocao,
+		                      margem_lucro, marca, localizacao, data_vencimento)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		 RETURNING id_produto, data_cadastro, ativo`,
 		empresaID, req.CodigoBarras, req.CodigoInterno, req.Nome, req.Descricao,
 		req.CategoriaID, unidade, req.ControlarEstoque,
-		req.EstoqueMinimo, req.PrecoCusto, req.PrecoVenda, req.Marca,
-		req.Localizacao, req.DataVencimento,
+		req.EstoqueMinimo, req.PrecoCusto, req.PrecoVenda,
+		req.PrecoPromocional, req.DataInicioPromocao, req.DataFimPromocao,
+		req.MargemLucro, req.Marca, req.Localizacao, req.DataVencimento,
 	).Scan(&p.ID, &p.DataCadastro, &p.Ativo)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar produto: %w", err)
@@ -220,22 +226,28 @@ func (s *ProdutoService) Atualizar(ctx context.Context, empresaID, produtoID int
 	_, err := s.db.Pool.Exec(ctx,
 		`UPDATE produto SET
 		    codigo_barras = COALESCE($1, codigo_barras),
-		    nome = $2,
-		    descricao = $3,
-		    categoria_id = $4,
-		    unidade_venda = COALESCE(NULLIF($5, ''), unidade_venda),
-		    controlar_estoque = $6,
-		    estoque_minimo = $7,
-		    preco_custo = $8,
-		    preco_venda = $9,
-		    marca = $10,
-		    localizacao = $11,
-		    data_vencimento = $12
-		 WHERE id_produto = $13 AND empresa_id = $14`,
-		req.CodigoBarras, req.Nome, req.Descricao, req.CategoriaID,
+		    codigo_interno = $2,
+		    nome = $3,
+		    descricao = $4,
+		    categoria_id = $5,
+		    unidade_venda = COALESCE(NULLIF($6, ''), unidade_venda),
+		    controlar_estoque = $7,
+		    estoque_minimo = $8,
+		    preco_custo = $9,
+		    preco_venda = $10,
+		    preco_promocional = $11,
+		    data_inicio_promocao = $12,
+		    data_fim_promocao = $13,
+		    margem_lucro = $14,
+		    marca = $15,
+		    localizacao = $16,
+		    data_vencimento = $17
+		 WHERE id_produto = $18 AND empresa_id = $19`,
+		req.CodigoBarras, req.CodigoInterno, req.Nome, req.Descricao, req.CategoriaID,
 		req.UnidadeVenda, req.ControlarEstoque, req.EstoqueMinimo,
-		req.PrecoCusto, req.PrecoVenda, req.Marca,
-		req.Localizacao, req.DataVencimento,
+		req.PrecoCusto, req.PrecoVenda, req.PrecoPromocional,
+		req.DataInicioPromocao, req.DataFimPromocao, req.MargemLucro,
+		req.Marca, req.Localizacao, req.DataVencimento,
 		produtoID, empresaID,
 	)
 	if err != nil {

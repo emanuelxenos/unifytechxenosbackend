@@ -42,19 +42,23 @@ type Produto struct {
 }
 
 type CriarProdutoRequest struct {
-	CodigoBarras     *string  `json:"codigo_barras,omitempty"`
-	CodigoInterno    *string  `json:"codigo_interno,omitempty"`
-	Nome             string   `json:"nome"`
-	Descricao        *string  `json:"descricao,omitempty"`
-	CategoriaID      *int     `json:"categoria_id,omitempty"`
-	UnidadeVenda     string   `json:"unidade_venda"`
-	ControlarEstoque bool     `json:"controlar_estoque"`
-	EstoqueMinimo    float64  `json:"estoque_minimo"`
-	PrecoCusto       float64  `json:"preco_custo"`
-	PrecoVenda       float64  `json:"preco_venda"`
-	Marca            *string    `json:"marca,omitempty"`
-	Localizacao      *string    `json:"localizacao,omitempty"`
-	DataVencimento   *time.Time `json:"data_vencimento,omitempty"`
+	CodigoBarras       *string    `json:"codigo_barras,omitempty"`
+	CodigoInterno      *string    `json:"codigo_interno,omitempty"`
+	Nome               string     `json:"nome"`
+	Descricao          *string    `json:"descricao,omitempty"`
+	CategoriaID        *int       `json:"categoria_id,omitempty"`
+	UnidadeVenda       string     `json:"unidade_venda"`
+	ControlarEstoque   bool       `json:"controlar_estoque"`
+	EstoqueMinimo      float64    `json:"estoque_minimo"`
+	PrecoCusto         float64    `json:"preco_custo"`
+	PrecoVenda         float64    `json:"preco_venda"`
+	PrecoPromocional   *float64   `json:"preco_promocional,omitempty"`
+	DataInicioPromocao *time.Time `json:"data_inicio_promocao,omitempty"`
+	DataFimPromocao     *time.Time `json:"data_fim_promocao,omitempty"`
+	MargemLucro        *float64   `json:"margem_lucro,omitempty"`
+	Marca              *string    `json:"marca,omitempty"`
+	Localizacao        *string    `json:"localizacao,omitempty"`
+	DataVencimento     *time.Time `json:"data_vencimento,omitempty"`
 }
 
 type ProdutoBuscaResponse struct {
