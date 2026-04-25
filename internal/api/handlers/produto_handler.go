@@ -2,8 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -140,4 +145,57 @@ func (h *ProdutoHandler) Inativar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	utils.JSONMessage(w, http.StatusOK, "Produto inativado com sucesso")
+}
+
+func (h *ProdutoHandler) UploadFoto(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetUserClaims(r)
+	if claims == nil {
+		utils.Error(w, http.StatusUnauthorized, "Não autenticado")
+		return
+	}
+
+	// Limite de 5MB para fotos de produtos
+	r.Body = http.MaxBytesReader(w, r.Body, 5*1024*1024)
+	if err := r.ParseMultipartForm(5 * 1024 * 1024); err != nil {
+		utils.Error(w, http.StatusBadRequest, "Arquivo muito grande (máximo 5MB)")
+		return
+	}
+
+	file, header, err := r.FormFile("foto")
+	if err != nil {
+		utils.Error(w, http.StatusBadRequest, "Arquivo 'foto' não enviado")
+		return
+	}
+	defer file.Close()
+
+	// Validar extensão
+	ext := filepath.Ext(header.Filename)
+	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" {
+		utils.Error(w, http.StatusBadRequest, "Formato inválido. Use PNG, JPG ou WEBP.")
+		return
+	}
+
+	// Criar nome único
+	filename := fmt.Sprintf("prod_%d_%d%s", claims.EmpresaID, time.Now().UnixNano(), ext)
+	relativePath := filepath.Join("uploads", "produtos", filename)
+	fullPath := filepath.Join(".", relativePath)
+
+	out, err := os.Create(fullPath)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, "Erro ao criar arquivo no servidor")
+		return
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, file); err != nil {
+		utils.Error(w, http.StatusInternalServerError, "Erro ao salvar arquivo")
+		return
+	}
+
+	// Retornar a URL relativa
+	url := "/" + filepath.ToSlash(relativePath)
+
+	utils.JSON(w, http.StatusOK, map[string]string{
+		"url": url,
+	})
 }

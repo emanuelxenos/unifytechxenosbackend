@@ -59,6 +59,7 @@ type CriarProdutoRequest struct {
 	Marca              *string    `json:"marca,omitempty"`
 	Localizacao        *string    `json:"localizacao,omitempty"`
 	DataVencimento     *time.Time `json:"data_vencimento,omitempty"`
+	FotoPrincipalURL   *string    `json:"foto_principal_url,omitempty"`
 }
 
 type ProdutoBuscaResponse struct {

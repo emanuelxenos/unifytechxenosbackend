@@ -100,6 +100,7 @@ func NewRouter(db *database.PostgresDB, cfg *config.Config, hub *ws.Hub) *chi.Mu
 			r.Post("/api/produtos", produtoHandler.Criar)
 			r.Put("/api/produtos/{id}", produtoHandler.Atualizar)
 			r.Delete("/api/produtos/{id}", produtoHandler.Inativar)
+			r.Post("/api/produtos/upload", produtoHandler.UploadFoto)
 
 			// Estoque
 			r.Post("/api/estoque/ajuste", estoqueHandler.Ajuste)

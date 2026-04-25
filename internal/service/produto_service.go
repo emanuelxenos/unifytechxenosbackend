@@ -62,7 +62,7 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 	                 p.estoque_atual, p.estoque_minimo, p.controlar_estoque, p.preco_custo,
 	                 p.preco_venda, p.preco_promocional, p.data_inicio_promocao,
 	                 p.data_fim_promocao, p.margem_lucro, p.ativo, p.destacado,
-	                 p.data_cadastro, p.data_ultima_venda, p.localizacao,
+	                 p.data_cadastro, p.data_ultima_venda, p.localizacao, p.foto_principal_url,
 	                 (SELECT MIN(data_vencimento) FROM estoque_lote WHERE produto_id = p.id_produto AND status = 'ativo') as data_vencimento,
 	                 c.nome as categoria_nome
 	          FROM produto p
@@ -110,7 +110,7 @@ func (s *ProdutoService) Listar(ctx context.Context, empresaID, page, limit int,
 			&p.EstoqueAtual, &p.EstoqueMinimo, &p.ControlarEstoque, &p.PrecoCusto,
 			&p.PrecoVenda, &p.PrecoPromocional, &p.DataInicioPromocao,
 			&p.DataFimPromocao, &p.MargemLucro, &p.Ativo, &p.Destacado,
-			&p.DataCadastro, &p.DataUltimaVenda, &p.Localizacao, &p.DataVencimento,
+			&p.DataCadastro, &p.DataUltimaVenda, &p.Localizacao, &p.FotoPrincipalURL, &p.DataVencimento,
 			&p.CategoriaNome,
 		)
 		if err != nil {
@@ -164,7 +164,7 @@ func (s *ProdutoService) BuscarPorID(ctx context.Context, empresaID, produtoID i
 		        p.controlar_estoque, p.preco_custo, p.preco_venda,
 		        p.preco_promocional, p.data_inicio_promocao, p.data_fim_promocao,
 		        p.margem_lucro, p.ativo, p.destacado, p.data_cadastro,
-		        p.data_ultima_compra, p.data_ultima_venda, p.localizacao,
+		        p.data_ultima_compra, p.data_ultima_venda, p.localizacao, p.foto_principal_url,
 		        (SELECT MIN(data_vencimento) FROM estoque_lote WHERE produto_id = p.id_produto AND status = 'ativo') as data_vencimento,
 		        c.nome as categoria_nome
 		 FROM produto p
@@ -178,7 +178,7 @@ func (s *ProdutoService) BuscarPorID(ctx context.Context, empresaID, produtoID i
 		&p.ControlarEstoque, &p.PrecoCusto, &p.PrecoVenda,
 		&p.PrecoPromocional, &p.DataInicioPromocao, &p.DataFimPromocao,
 		&p.MargemLucro, &p.Ativo, &p.Destacado, &p.DataCadastro,
-		&p.DataUltimaCompra, &p.DataUltimaVenda, &p.Localizacao, &p.DataVencimento,
+		&p.DataUltimaCompra, &p.DataUltimaVenda, &p.Localizacao, &p.FotoPrincipalURL, &p.DataVencimento,
 		&p.CategoriaNome,
 	)
 	if err != nil {
@@ -199,14 +199,14 @@ func (s *ProdutoService) Criar(ctx context.Context, empresaID int, req models.Cr
 		                      categoria_id, unidade_venda, controlar_estoque,
 		                      estoque_minimo, preco_custo, preco_venda,
 		                      preco_promocional, data_inicio_promocao, data_fim_promocao,
-		                      margem_lucro, marca, localizacao, data_vencimento)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		                      margem_lucro, marca, localizacao, data_vencimento, foto_principal_url)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		 RETURNING id_produto, data_cadastro, ativo`,
 		empresaID, req.CodigoBarras, req.CodigoInterno, req.Nome, req.Descricao,
 		req.CategoriaID, unidade, req.ControlarEstoque,
 		req.EstoqueMinimo, req.PrecoCusto, req.PrecoVenda,
 		req.PrecoPromocional, req.DataInicioPromocao, req.DataFimPromocao,
-		req.MargemLucro, req.Marca, req.Localizacao, req.DataVencimento,
+		req.MargemLucro, req.Marca, req.Localizacao, req.DataVencimento, req.FotoPrincipalURL,
 	).Scan(&p.ID, &p.DataCadastro, &p.Ativo)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar produto: %w", err)
@@ -241,13 +241,14 @@ func (s *ProdutoService) Atualizar(ctx context.Context, empresaID, produtoID int
 		    margem_lucro = $14,
 		    marca = $15,
 		    localizacao = $16,
-		    data_vencimento = $17
-		 WHERE id_produto = $18 AND empresa_id = $19`,
+		    data_vencimento = $17,
+		    foto_principal_url = $18
+		 WHERE id_produto = $19 AND empresa_id = $20`,
 		req.CodigoBarras, req.CodigoInterno, req.Nome, req.Descricao, req.CategoriaID,
 		req.UnidadeVenda, req.ControlarEstoque, req.EstoqueMinimo,
 		req.PrecoCusto, req.PrecoVenda, req.PrecoPromocional,
 		req.DataInicioPromocao, req.DataFimPromocao, req.MargemLucro,
-		req.Marca, req.Localizacao, req.DataVencimento,
+		req.Marca, req.Localizacao, req.DataVencimento, req.FotoPrincipalURL,
 		produtoID, empresaID,
 	)
 	if err != nil {
