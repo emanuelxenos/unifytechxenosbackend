@@ -68,7 +68,9 @@ func (h *RelatorioHandler) MaisVendidos(w http.ResponseWriter, r *http.Request) 
 		periodo = "30d"
 	}
 
-	produtos, err := h.relatorioService.MaisVendidos(r.Context(), claims.EmpresaID, periodo)
+	catID, _ := strconv.Atoi(r.URL.Query().Get("categoria_id"))
+
+	produtos, err := h.relatorioService.MaisVendidos(r.Context(), claims.EmpresaID, periodo, catID)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, err.Error())
 		return

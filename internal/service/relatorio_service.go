@@ -21,10 +21,10 @@ func (s *RelatorioService) GetDB() *database.PostgresDB {
 }
 
 type RelatorioVendasDia struct {
-	TotalVendas       int                      `json:"total_vendas"`
-	ValorTotal        float64                  `json:"valor_total"`
-	TicketMedio       float64                  `json:"ticket_medio"`
-	PorCaixa          []RelatorioVendasCaixa   `json:"por_caixa"`
+	TotalVendas       int                       `json:"total_vendas"`
+	ValorTotal        float64                   `json:"valor_total"`
+	TicketMedio       float64                   `json:"ticket_medio"`
+	PorCaixa          []RelatorioVendasCaixa    `json:"por_caixa"`
 	PorFormaPagamento []RelatorioFormaPagamento `json:"por_forma_pagamento"`
 }
 
@@ -41,10 +41,10 @@ type RelatorioFormaPagamento struct {
 }
 
 type ProdutoMaisVendido struct {
-	ID          int     `json:"id_produto"`
-	Nome        string  `json:"nome"`
-	Quantidade  float64 `json:"quantidade_vendida"`
-	ValorTotal  float64 `json:"valor_total"`
+	ID         int     `json:"id_produto"`
+	Nome       string  `json:"nome"`
+	Quantidade float64 `json:"quantidade_vendida"`
+	ValorTotal float64 `json:"valor_total"`
 }
 
 func (s *RelatorioService) preencherDetalhesVenda(ctx context.Context, rel *RelatorioVendasDia, empresaID int, condicaoData string, args ...interface{}) {
@@ -53,7 +53,7 @@ func (s *RelatorioService) preencherDetalhesVenda(ctx context.Context, rel *Rela
 		 FROM venda v JOIN caixa_fisico cf ON v.caixa_fisico_id = cf.id_caixa_fisico
 		 WHERE v.empresa_id = $1 AND %s AND v.status = 'concluida'
 		 GROUP BY cf.nome`, condicaoData)
-	
+
 	rows, _ := s.db.Pool.Query(ctx, queryCaixa, args...)
 	if rows != nil {
 		defer rows.Close()
@@ -108,7 +108,7 @@ func (s *RelatorioService) VendasMes(ctx context.Context, empresaID int) (*Relat
 		 AND EXTRACT(YEAR FROM data_venda) = EXTRACT(YEAR FROM CURRENT_DATE)
 		 AND status = 'concluida'`,
 		empresaID).Scan(&rel.TotalVendas, &rel.ValorTotal)
-		
+
 	if rel.TotalVendas > 0 {
 		rel.TicketMedio = rel.ValorTotal / float64(rel.TotalVendas)
 	}
@@ -127,7 +127,7 @@ func (s *RelatorioService) VendasPeriodo(ctx context.Context, empresaID int, dat
 		 AND DATE(data_venda) >= $2::date AND DATE(data_venda) <= $3::date
 		 AND status = 'concluida'`,
 		empresaID, dataInicio, dataFim).Scan(&rel.TotalVendas, &rel.ValorTotal)
-		
+
 	if rel.TotalVendas > 0 {
 		rel.TicketMedio = rel.ValorTotal / float64(rel.TotalVendas)
 	}
@@ -138,7 +138,7 @@ func (s *RelatorioService) VendasPeriodo(ctx context.Context, empresaID int, dat
 	return rel, nil
 }
 
-func (s *RelatorioService) MaisVendidos(ctx context.Context, empresaID int, periodo string) ([]ProdutoMaisVendido, error) {
+func (s *RelatorioService) MaisVendidos(ctx context.Context, empresaID int, periodo string, categoriaID int) ([]ProdutoMaisVendido, error) {
 	days := "30"
 	switch periodo {
 	case "7d":
@@ -147,16 +147,27 @@ func (s *RelatorioService) MaisVendidos(ctx context.Context, empresaID int, peri
 		days = "90"
 	}
 
-	rows, err := s.db.Pool.Query(ctx,
-		fmt.Sprintf(`SELECT p.id_produto, p.nome, COALESCE(SUM(iv.quantidade), 0), COALESCE(SUM(iv.valor_liquido), 0)
+	query := fmt.Sprintf(`SELECT p.id_produto, p.nome, COALESCE(SUM(iv.quantidade), 0), COALESCE(SUM(iv.valor_liquido), 0)
 		 FROM item_venda iv
 		 JOIN produto p ON iv.produto_id = p.id_produto
 		 JOIN venda v ON iv.venda_id = v.id_venda
 		 WHERE v.empresa_id = $1 AND iv.status = 'vendido'
 		 AND iv.data_hora >= CURRENT_DATE - INTERVAL '%s days'
-		 GROUP BY p.id_produto, p.nome
-		 ORDER BY SUM(iv.quantidade) DESC LIMIT 20`, days),
-		empresaID)
+    `, days)
+
+	args := []interface{}{empresaID}
+	placeholderID := 2
+
+	if categoriaID > 0 {
+		query += fmt.Sprintf(" AND p.categoria_id = $%d", placeholderID)
+		args = append(args, categoriaID)
+		placeholderID++
+	}
+
+	query += ` GROUP BY p.id_produto, p.nome
+		 ORDER BY SUM(iv.quantidade) DESC LIMIT 20`
+
+	rows, err := s.db.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -172,12 +183,12 @@ func (s *RelatorioService) MaisVendidos(ctx context.Context, empresaID int, peri
 }
 
 type RelatorioEstoque struct {
-	TotalProdutos      int     `json:"total_produtos"`
-	ValorTotalCusto    float64 `json:"valor_total_custo"`
-	ValorTotalVenda    float64 `json:"valor_total_venda"`
-	ProdutosBaixos     int     `json:"produtos_baixo_estoque"`
+	TotalProdutos       int     `json:"total_produtos"`
+	ValorTotalCusto     float64 `json:"valor_total_custo"`
+	ValorTotalVenda     float64 `json:"valor_total_venda"`
+	ProdutosBaixos      int     `json:"produtos_baixo_estoque"`
 	SugestaoCompraTotal float64 `json:"sugestao_compra_total"`
-	ProdutosVencendo   int     `json:"produtos_vencendo"`
+	ProdutosVencendo    int     `json:"produtos_vencendo"`
 }
 
 type PerformanceProduto struct {
@@ -338,23 +349,23 @@ func (s *RelatorioService) SugestaoCompra(ctx context.Context, empresaID int) ([
 }
 
 type RelatorioFinanceiro struct {
-	ContasPagarAbertas int     `json:"contas_pagar_abertas"`
-	ValorPagarAberto   float64 `json:"valor_pagar_aberto"`
+	ContasPagarAbertas  int     `json:"contas_pagar_abertas"`
+	ValorPagarAberto    float64 `json:"valor_pagar_aberto"`
 	ContasReceberAberto int     `json:"contas_receber_abertas"`
 	ValorReceberAberto  float64 `json:"valor_receber_aberto"`
-	SaldoCaixaDia      float64 `json:"saldo_caixa_dia"`
+	SaldoCaixaDia       float64 `json:"saldo_caixa_dia"`
 }
 
 func (s *RelatorioService) FinanceiroResumo(ctx context.Context, empresaID int) (*RelatorioFinanceiro, error) {
 	rel := &RelatorioFinanceiro{}
-	
+
 	s.db.Pool.QueryRow(ctx, `SELECT COUNT(*), COALESCE(SUM(valor_original - valor_pago), 0) FROM conta_pagar WHERE empresa_id = $1 AND status = 'aberta'`, empresaID).Scan(&rel.ContasPagarAbertas, &rel.ValorPagarAberto)
 	s.db.Pool.QueryRow(ctx, `SELECT COUNT(*), COALESCE(SUM(valor_original - valor_recebido), 0) FROM conta_receber WHERE empresa_id = $1 AND status = 'aberta'`, empresaID).Scan(&rel.ContasReceberAberto, &rel.ValorReceberAberto)
 	s.db.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(CASE WHEN tipo = 'venda' OR tipo = 'recebimento' OR tipo = 'suprimento' THEN valor 
 								 WHEN tipo = 'pagamento' OR tipo = 'sangria' THEN -valor ELSE 0 END), 0)
 		FROM vw_fluxo_caixa WHERE empresa_id = $1 AND data = CURRENT_DATE`, empresaID).Scan(&rel.SaldoCaixaDia)
-		
+
 	return rel, nil
 }
 
@@ -451,12 +462,12 @@ func (s *RelatorioService) InadimplenciaResumo(ctx context.Context, empresaID in
 }
 
 type ProdutoABC struct {
-	ID             int     `json:"id_produto"`
-	Nome           string  `json:"nome"`
-	Faturamento    float64 `json:"faturamento"`
-	Percentual     float64 `json:"percentual"`
-	Acumulado      float64 `json:"percentual_acumulado"`
-	Classificacao  string  `json:"classificacao"`
+	ID            int     `json:"id_produto"`
+	Nome          string  `json:"nome"`
+	Faturamento   float64 `json:"faturamento"`
+	Percentual    float64 `json:"percentual"`
+	Acumulado     float64 `json:"percentual_acumulado"`
+	Classificacao string  `json:"classificacao"`
 }
 
 type RelatorioCurvaABC struct {
@@ -500,7 +511,7 @@ func (s *RelatorioService) CurvaABC(ctx context.Context, empresaID int) (*Relato
 	for rows.Next() {
 		var item ProdutoABC
 		rows.Scan(&item.ID, &item.Nome, &item.Faturamento)
-		
+
 		item.Percentual = (item.Faturamento / rel.TotalFaturamento) * 100
 		acumulado += item.Percentual
 		item.Acumulado = acumulado
@@ -512,7 +523,7 @@ func (s *RelatorioService) CurvaABC(ctx context.Context, empresaID int) (*Relato
 		} else {
 			item.Classificacao = "C"
 		}
-		
+
 		rel.Itens = append(rel.Itens, item)
 	}
 
@@ -520,12 +531,12 @@ func (s *RelatorioService) CurvaABC(ctx context.Context, empresaID int) (*Relato
 }
 
 type ComissaoOperador struct {
-	UsuarioID     int     `json:"usuario_id"`
-	Nome          string  `json:"nome"`
-	TotalVendas   int     `json:"total_vendas"`
-	ValorTotal    float64 `json:"valor_total"`
-	TicketMedio   float64 `json:"ticket_medio"`
-	Comissao      float64 `json:"comissao"`
+	UsuarioID   int     `json:"usuario_id"`
+	Nome        string  `json:"nome"`
+	TotalVendas int     `json:"total_vendas"`
+	ValorTotal  float64 `json:"valor_total"`
+	TicketMedio float64 `json:"ticket_medio"`
+	Comissao    float64 `json:"comissao"`
 }
 
 type RelatorioComissoes struct {
@@ -554,12 +565,12 @@ func (s *RelatorioService) ComissoesOperador(ctx context.Context, empresaID int,
 	for rows.Next() {
 		var c ComissaoOperador
 		rows.Scan(&c.UsuarioID, &c.Nome, &c.TotalVendas, &c.ValorTotal)
-		
+
 		if c.TotalVendas > 0 {
 			c.TicketMedio = c.ValorTotal / float64(c.TotalVendas)
 		}
 		c.Comissao = c.ValorTotal * 0.01 // 1% fixo
-		
+
 		rel.Operadores = append(rel.Operadores, c)
 		rel.TotalGeral += c.ValorTotal
 		rel.TotalComissao += c.Comissao
