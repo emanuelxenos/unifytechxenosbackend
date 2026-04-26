@@ -166,6 +166,8 @@ CREATE TABLE IF NOT EXISTS categoria (
     empresa_id INTEGER NOT NULL REFERENCES empresa(id_empresa) ON DELETE CASCADE,
     nome VARCHAR(100) NOT NULL,
     descricao TEXT,
+    icone VARCHAR(20),
+    cor_hex VARCHAR(10),
     categoria_pai_id INTEGER REFERENCES categoria(id_categoria),
     nivel INTEGER DEFAULT 1,
     ativo BOOLEAN DEFAULT TRUE,

@@ -43,20 +43,23 @@ func (s *CategoriaService) Listar(ctx context.Context, empresaID, page, limit in
 	}
 
 	// Query categorias
-	query := `SELECT id_categoria, empresa_id, nome, descricao, categoria_pai_id, nivel, ativo, ordem_exibicao, data_cadastro
-	          FROM categoria
-	          WHERE empresa_id = $1 AND ativo = true`
+	query := `SELECT c.id_categoria, c.empresa_id, c.nome, c.descricao, c.icone, c.cor_hex, c.categoria_pai_id, c.nivel, c.ativo, c.ordem_exibicao, c.data_cadastro,
+	          (SELECT COUNT(*) FROM produto p WHERE p.categoria_id = c.id_categoria AND p.ativo = true) as total_produtos,
+	          cp.nome as categoria_pai_nome
+	          FROM categoria c
+	          LEFT JOIN categoria cp ON c.categoria_pai_id = cp.id_categoria
+	          WHERE c.empresa_id = $1 AND c.ativo = true`
 
 	queryArgs := []interface{}{empresaID}
 	qArgIdx := 2
 
 	if search != "" {
-		query += fmt.Sprintf(` AND nome ILIKE $%d`, qArgIdx)
+		query += fmt.Sprintf(` AND c.nome ILIKE $%d`, qArgIdx)
 		queryArgs = append(queryArgs, "%"+search+"%")
 		qArgIdx++
 	}
 
-	query += fmt.Sprintf(` ORDER BY ordem_exibicao, nome LIMIT $%d OFFSET $%d`, qArgIdx, qArgIdx+1)
+	query += fmt.Sprintf(` ORDER BY COALESCE(c.categoria_pai_id, c.id_categoria), c.categoria_pai_id NULLS FIRST, c.ordem_exibicao, c.nome LIMIT $%d OFFSET $%d`, qArgIdx, qArgIdx+1)
 	queryArgs = append(queryArgs, limit, offset)
 
 	rows, err := s.db.Pool.Query(ctx, query, queryArgs...)
@@ -69,8 +72,8 @@ func (s *CategoriaService) Listar(ctx context.Context, empresaID, page, limit in
 	for rows.Next() {
 		var c models.Categoria
 		err := rows.Scan(
-			&c.ID, &c.EmpresaID, &c.Nome, &c.Descricao, &c.CategoriaPaiID,
-			&c.Nivel, &c.Ativo, &c.OrdemExibicao, &c.DataCadastro,
+			&c.ID, &c.EmpresaID, &c.Nome, &c.Descricao, &c.Icone, &c.CorHex, &c.CategoriaPaiID,
+			&c.Nivel, &c.Ativo, &c.OrdemExibicao, &c.DataCadastro, &c.TotalProdutos, &c.CategoriaPaiNome,
 		)
 		if err != nil {
 			continue
@@ -94,10 +97,10 @@ func (s *CategoriaService) Criar(ctx context.Context, empresaID int, req models.
 	}
 
 	err := s.db.Pool.QueryRow(ctx,
-		`INSERT INTO categoria (empresa_id, nome, descricao, categoria_pai_id, nivel, ordem_exibicao)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO categoria (empresa_id, nome, descricao, icone, cor_hex, categoria_pai_id, nivel, ordem_exibicao)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING id_categoria, data_cadastro, ativo`,
-		empresaID, req.Nome, req.Descricao, req.CategoriaPaiID, nivel, req.OrdemExibicao,
+		empresaID, req.Nome, req.Descricao, req.Icone, req.CorHex, req.CategoriaPaiID, nivel, req.OrdemExibicao,
 	).Scan(&c.ID, &c.DataCadastro, &c.Ativo)
 	
 	if err != nil {
@@ -107,6 +110,8 @@ func (s *CategoriaService) Criar(ctx context.Context, empresaID int, req models.
 	c.EmpresaID = empresaID
 	c.Nome = req.Nome
 	c.Descricao = req.Descricao
+	c.Icone = req.Icone
+	c.CorHex = req.CorHex
 	c.CategoriaPaiID = req.CategoriaPaiID
 	c.Nivel = nivel
 	c.OrdemExibicao = req.OrdemExibicao
@@ -128,11 +133,13 @@ func (s *CategoriaService) Atualizar(ctx context.Context, empresaID, categoriaID
 		`UPDATE categoria SET
 		    nome = $1,
 		    descricao = $2,
-		    categoria_pai_id = $3,
-		    nivel = $4,
-		    ordem_exibicao = $5
-		 WHERE id_categoria = $6 AND empresa_id = $7`,
-		req.Nome, req.Descricao, req.CategoriaPaiID, nivel, req.OrdemExibicao,
+		    icone = $3,
+		    cor_hex = $4,
+		    categoria_pai_id = $5,
+		    nivel = $6,
+		    ordem_exibicao = $7
+		 WHERE id_categoria = $8 AND empresa_id = $9`,
+		req.Nome, req.Descricao, req.Icone, req.CorHex, req.CategoriaPaiID, nivel, req.OrdemExibicao,
 		categoriaID, empresaID,
 	)
 	if err != nil {
